@@ -1,0 +1,6 @@
+"RDA5807.obj",
+"delay.obj",
+"lcd.obj",
+"IIC.obj" 
+TO "main" 
+RAMSIZE(256) 
