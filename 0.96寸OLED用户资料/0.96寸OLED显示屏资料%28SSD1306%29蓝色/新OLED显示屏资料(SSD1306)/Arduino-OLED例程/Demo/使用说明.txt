@@ -1,0 +1,3 @@
+Adafruit_GFX和Adafruit_SSD1306这两个文件夹是库文件，请将其放入"libraries"文件夹内；
+
+Demo.ino为演示程序，正确接线并下载到Arduino板子上即可。

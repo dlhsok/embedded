@@ -1,0 +1,18 @@
+<html>
+<body>
+<pre>
+<h1>礦ision3 Build Log</h1>
+<h2>Project:</h2>
+D:\龙丘科技\模块资料\龙丘OLED打包资料\LQ-STC&52-OLED\LQ-STC&52-OLED.uv2
+Project File Date:  09/04/2011
+
+<h2>Output:</h2>
+Build target 'Target 1'
+compiling LQ12864.c...
+LQ12864.c(517): warning C316: unterminated conditionals
+compiling LQ12864main.c...
+LQ12864main.c(92): warning C316: unterminated conditionals
+linking...
+Program Size: data=129.0 xdata=0 code=3241
+creating hex file from "LQ_OLED"...
+"LQ_OLED" - 0 Error(s), 2 Warning(s).

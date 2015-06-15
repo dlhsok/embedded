@@ -1,0 +1,1 @@
+-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I "C:\Keil\ARM\INC" -I "C:\Keil\ARM\INC\Luminary" -o "systeminit.o" --omf_browse "systeminit.crf" --depend "systeminit.d" "systemInit.c"

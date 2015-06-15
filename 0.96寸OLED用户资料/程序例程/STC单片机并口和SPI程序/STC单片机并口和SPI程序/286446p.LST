@@ -1,0 +1,1343 @@
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 1   
+
+
+C51 COMPILER V8.12, COMPILATION OF MODULE 286446P
+OBJECT MODULE PLACED IN 286446p.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE 286446p.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+   2          //
+   3          //  UG-2864HSWEG01 (2864-46p) Reference Code
+   4          //
+   5          //    Dot Matrix: 128*64
+   6          //    Driver IC : SSD1306 (Solomon Systech)
+   7          //    Interface : 8-bit 68XX/80XX Parallel, 3-/4-wire SPI
+   8          //    Revision  :
+   9          //    Date      : 2009/06/05
+  10          //    Author    :
+  11          //    Editor    : Humphrey Lin
+  12          //
+  13          //  Copyright (c) Univision Technology Inc.
+  14          //
+  15          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  16          
+  17          #include <at89x51.h>
+  18          
+  19          //#define       M68                             // 8-bit 68XX Parallel
+  20                                                          //   BS1=1; BS2=1
+  21          #define         I80                             // 8-bit 80XX Parallel
+  22                                                          //   BS1=0; BS2=1
+  23          //#define       SPI                             // 4-wire SPI
+  24                                                          //   BS1=0; BS2=0
+  25                                                          //   The unused pins should be connected with VSS mostly or floating (D2).
+  26                                                          //   Please refer to the SSD1306 specification for detail.
+  27          
+  28          
+  29          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  30          //  Pin Definition
+  31          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  32          #define xData   P1                              // Parallel Data Input/Output
+  33          
+  34          
+  35          #define SCLK    P1_0                            // Serial Clock Input
+  36          #define SDIN    P1_1                            // Serial Data Input
+  37          
+  38          #define RES     P2_4                            // Reset
+  39          #define CS      P2_2                            // Chip Select
+  40          #define DC      P2_5                            // Data/Command Control
+  41          
+  42          #define E       P3_0                            // Read/Write Enable
+  43          #define RW      P3_1                            // Read/Write Select
+  44          
+  45          #define RD      P2_7                            // Read Signal
+  46          #define WR      P2_6                            // Write Signal
+  47          
+  48          /*
+  49          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  50          #define xData   P0                              // Parallel Data Input/Output
+  51          
+  52          
+  53          #define SCLK    P0_0                            // Serial Clock Input
+  54          #define SDIN    P0_1                            // Serial Data Input
+  55          
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 2   
+
+  56          #define RES     P1_4                            // Reset
+  57          #define CS      P1_2                            // Chip Select
+  58          #define DC      P1_5                            // Data/Command Control
+  59          
+  60          #define E       P3_0                            // Read/Write Enable
+  61          #define RW      P3_1                            // Read/Write Select
+  62          
+  63          #define RD      P1_7                            // Read Signal
+  64          #define WR      P1_6                            // Write Signal
+  65           */
+  66          
+  67          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  68          //  Delay Time
+  69          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  70          void uDelay(unsigned char l)
+  71          {
+  72   1              while(l--);
+  73   1      }
+  74          
+  75          
+  76          void Delay(unsigned char n)
+  77          {
+  78   1      unsigned char i,j,k;
+  79   1      
+  80   1              for(k=0;k<n;k++)
+  81   1              {
+  82   2                      for(i=0;i<131;i++)
+  83   2                      {
+  84   3                              for(j=0;j<15;j++)
+  85   3                              {
+  86   4                                      uDelay(203);    
+  87   4                              }
+  88   3                      }
+  89   2              }
+  90   1      }
+  91          
+  92          
+  93          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  94          //  Read/Write Sequence
+  95          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  96          #ifdef M68                                      // 8-bit 68XX Parallel
+              void Write_Command(unsigned char Data)
+              {
+                      DC=0;
+                      CS=0;
+                      RW=0;
+                      E=1;
+                      xData=Data;
+                      E=0;
+                      RW=1;
+                      CS=1;
+                      DC=1;
+              }
+              
+              
+              void Write_Data(unsigned char Data)
+              {
+                      DC=1;
+                      CS=0;
+                      RW=0;
+                      E=1;
+                      xData=Data;
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 3   
+
+                      E=0;
+                      RW=1;
+                      CS=1;
+                      DC=1;
+              }
+              #endif
+ 124          
+ 125          
+ 126          #ifdef I80                                      // 8-bit 80XX Parallel
+ 127          void Write_Command(unsigned char Data)
+ 128          {
+ 129   1              DC=0;
+ 130   1              CS=0;
+ 131   1              WR=0;
+ 132   1              xData=Data;
+ 133   1              WR=1;
+ 134   1              CS=1;
+ 135   1              DC=1;
+ 136   1      }
+ 137          
+ 138          
+ 139          void Write_Data(unsigned char Data)
+ 140          {
+ 141   1              DC=1;
+ 142   1              CS=0;
+ 143   1              WR=0;
+ 144   1              xData=Data;
+ 145   1              WR=1;
+ 146   1              CS=1;
+ 147   1              DC=1;
+ 148   1      }
+ 149          #endif
+ 150          
+ 151          
+ 152          #ifdef SPI                                      // 4-wire SPI
+              void Write_Command(unsigned char Data)
+              {
+              unsigned char i;
+              
+                      CS=0;
+                      DC=0;
+                      for (i=0; i<8; i++)
+                      {
+                              SCLK=0;
+                              SDIN=(Data&0x80)>>7;
+                              Data = Data << 1;
+              //              uDelay(1);
+                              SCLK=1;
+              //              uDelay(1);
+                      }
+              //      SCLK=0;
+                      DC=1;
+                      CS=1;
+              }
+              
+              
+              void Write_Data(unsigned char Data)
+              {
+              unsigned char i;
+              
+                      CS=0;
+                      DC=1;
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 4   
+
+                      for (i=0; i<8; i++)
+                      {
+                              SCLK=0;
+                              SDIN=(Data&0x80)>>7;
+                              Data = Data << 1;
+              //              uDelay(1);
+                              SCLK=1;
+              //              uDelay(1);
+                      }
+              //      SCLK=0;
+                      DC=1;
+                      CS=1;
+              }
+              #endif
+ 194          
+ 195          
+ 196          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 197          //  Instruction Setting
+ 198          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 199          void Set_Start_Column(unsigned char d)
+ 200          {
+ 201   1              Write_Command(0x00+d%16);               // Set Lower Column Start Address for Page Addressing Mode
+ 202   1                                                      //   Default => 0x00
+ 203   1              Write_Command(0x10+d/16);               // Set Higher Column Start Address for Page Addressing Mode
+ 204   1                                                      //   Default => 0x10
+ 205   1      }
+ 206          
+ 207          
+ 208          void Set_Addressing_Mode(unsigned char d)
+ 209          {
+ 210   1              Write_Command(0x20);                    // Set Memory Addressing Mode
+ 211   1              Write_Command(d);                       //   Default => 0x02
+ 212   1                                                      //     0x00 => Horizontal Addressing Mode
+ 213   1                                                      //     0x01 => Vertical Addressing Mode
+ 214   1                                                      //     0x02 => Page Addressing Mode
+ 215   1      }
+ 216          
+ 217          
+ 218          void Set_Column_Address(unsigned char a, unsigned char b)
+ 219          {
+ 220   1              Write_Command(0x21);                    // Set Column Address
+ 221   1              Write_Command(a);                       //   Default => 0x00 (Column Start Address)
+ 222   1              Write_Command(b);                       //   Default => 0x7F (Column End Address)
+ 223   1      }
+ 224          
+ 225          
+ 226          void Set_Page_Address(unsigned char a, unsigned char b)
+ 227          {
+ 228   1              Write_Command(0x22);                    // Set Page Address
+ 229   1              Write_Command(a);                       //   Default => 0x00 (Page Start Address)
+ 230   1              Write_Command(b);                       //   Default => 0x07 (Page End Address)
+ 231   1      }
+ 232          
+ 233          
+ 234          void Set_Start_Line(unsigned char d)
+ 235          {
+ 236   1              Write_Command(0x40|d);                  // Set Display Start Line
+ 237   1                                                      //   Default => 0x40 (0x00)
+ 238   1      }
+ 239          
+ 240          
+ 241          void Set_Contrast_Control(unsigned char d)
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 5   
+
+ 242          {
+ 243   1              Write_Command(0x81);                    // Set Contrast Control
+ 244   1              Write_Command(d);                       //   Default => 0x7F
+ 245   1      }
+ 246          
+ 247          
+ 248          void Set_Charge_Pump(unsigned char d)
+ 249          {
+ 250   1              Write_Command(0x8D);                    // Set Charge Pump
+ 251   1              Write_Command(0x10|d);                  //   Default => 0x10
+ 252   1                                                      //     0x10 (0x00) => Disable Charge Pump
+ 253   1                                                      //     0x14 (0x04) => Enable Charge Pump
+ 254   1      }
+ 255          
+ 256          
+ 257          void Set_Segment_Remap(unsigned char d)
+ 258          {
+ 259   1              Write_Command(0xA0|d);                  // Set Segment Re-Map
+ 260   1                                                      //   Default => 0xA0
+ 261   1                                                      //     0xA0 (0x00) => Column Address 0 Mapped to SEG0
+ 262   1                                                      //     0xA1 (0x01) => Column Address 0 Mapped to SEG127
+ 263   1      }
+ 264          
+ 265          
+ 266          void Set_Entire_Display(unsigned char d)
+ 267          {
+ 268   1              Write_Command(0xA4|d);                  // Set Entire Display On / Off
+ 269   1                                                      //   Default => 0xA4
+ 270   1                                                      //     0xA4 (0x00) => Normal Display
+ 271   1                                                      //     0xA5 (0x01) => Entire Display On
+ 272   1      }
+ 273          
+ 274          
+ 275          void Set_Inverse_Display(unsigned char d)
+ 276          {
+ 277   1              Write_Command(0xA6|d);                  // Set Inverse Display On/Off
+ 278   1                                                      //   Default => 0xA6
+ 279   1                                                      //     0xA6 (0x00) => Normal Display
+ 280   1                                                      //     0xA7 (0x01) => Inverse Display On
+ 281   1      }
+ 282          
+ 283          
+ 284          void Set_Multiplex_Ratio(unsigned char d)
+ 285          {
+ 286   1              Write_Command(0xA8);                    // Set Multiplex Ratio
+ 287   1              Write_Command(d);                       //   Default => 0x3F (1/64 Duty)
+ 288   1      }
+ 289          
+ 290          
+ 291          void Set_Display_On_Off(unsigned char d)        
+ 292          {
+ 293   1              Write_Command(0xAE|d);                  // Set Display On/Off
+ 294   1                                                      //   Default => 0xAE
+ 295   1                                                      //     0xAE (0x00) => Display Off
+ 296   1                                                      //     0xAF (0x01) => Display On
+ 297   1      }
+ 298          
+ 299          
+ 300          void Set_Start_Page(unsigned char d)
+ 301          {
+ 302   1              Write_Command(0xB0|d);                  // Set Page Start Address for Page Addressing Mode
+ 303   1                                                      //   Default => 0xB0 (0x00)
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 6   
+
+ 304   1      }
+ 305          
+ 306          
+ 307          void Set_Common_Remap(unsigned char d)
+ 308          {
+ 309   1              Write_Command(0xC0|d);                  // Set COM Output Scan Direction
+ 310   1                                                      //   Default => 0xC0
+ 311   1                                                      //     0xC0 (0x00) => Scan from COM0 to 63
+ 312   1                                                      //     0xC8 (0x08) => Scan from COM63 to 0
+ 313   1      }
+ 314          
+ 315          
+ 316          void Set_Display_Offset(unsigned char d)
+ 317          {
+ 318   1              Write_Command(0xD3);                    // Set Display Offset
+ 319   1              Write_Command(d);                       //   Default => 0x00
+ 320   1      }
+ 321          
+ 322          
+ 323          void Set_Display_Clock(unsigned char d)
+ 324          {
+ 325   1              Write_Command(0xD5);                    // Set Display Clock Divide Ratio / Oscillator Frequency
+ 326   1              Write_Command(d);                       //   Default => 0x80
+ 327   1                                                      //     D[3:0] => Display Clock Divider
+ 328   1                                                      //     D[7:4] => Oscillator Frequency
+ 329   1      }
+ 330          
+ 331          
+ 332          void Set_Precharge_Period(unsigned char d)
+ 333          {
+ 334   1              Write_Command(0xD9);                    // Set Pre-Charge Period
+ 335   1              Write_Command(d);                       //   Default => 0x22 (2 Display Clocks [Phase 2] / 2 Display Clocks [Phase 1])
+ 336   1                                                      //     D[3:0] => Phase 1 Period in 1~15 Display Clocks
+ 337   1                                                      //     D[7:4] => Phase 2 Period in 1~15 Display Clocks
+ 338   1      }
+ 339          
+ 340          
+ 341          void Set_Common_Config(unsigned char d)
+ 342          {
+ 343   1              Write_Command(0xDA);                    // Set COM Pins Hardware Configuration
+ 344   1              Write_Command(0x02|d);                  //   Default => 0x12 (0x10)
+ 345   1                                                      //     Alternative COM Pin Configuration
+ 346   1                                                      //     Disable COM Left/Right Re-Map
+ 347   1      }
+ 348          
+ 349          
+ 350          void Set_VCOMH(unsigned char d)
+ 351          {
+ 352   1              Write_Command(0xDB);                    // Set VCOMH Deselect Level
+ 353   1              Write_Command(d);                       //   Default => 0x20 (0.77*VCC)
+ 354   1      }
+ 355          
+ 356          
+ 357          void Set_NOP()
+ 358          {
+ 359   1              Write_Command(0xE3);                    // Command for No Operation
+ 360   1      }
+ 361          
+ 362          
+ 363          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 364          //  Global Variables
+ 365          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 7   
+
+ 366          #define XLevelL         0x00
+ 367          #define XLevelH         0x10
+ 368          #define XLevel          ((XLevelH&0x0F)*16+XLevelL)
+ 369          #define Max_Column      128
+ 370          #define Max_Row         64
+ 371          #define Brightness      0xCF
+ 372          
+ 373          
+ 374          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 375          //  Patterns
+ 376          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 377          unsigned char code UniV[][48]={                 // UniV OLED
+ 378                  0x00,0x00,0xFC,0xFC,0xFC,0xFC,0x00,0x00,0x00,0xFC,0xFC,0xFC,0xFC,0x00,0x00,0x00,0xE0,0xE0,0xE0,0xE0,0x60,
+             -0xE0,0xE0,0xE0,0xC0,0x00,0x00,0x00,0xEC,0xEC,0xEC,0xEC,0x00,0x00,0x00,0x04,0x3C,0xFC,0xFC,0xF0,0x80,0x80,0xF0,0xFC,0xFC,
+             -0x3C,0x04,0x00,
+ 379                  0x00,0x00,0x07,0x0F,0x1F,0x1F,0x1C,0x18,0x1C,0x1F,0x1F,0x0F,0x07,0x00,0x00,0x00,0x1F,0x1F,0x1F,0x1F,0x00,
+             -0x1F,0x1F,0x1F,0x1F,0x00,0x00,0x00,0x1F,0x1F,0x1F,0x1F,0x00,0x00,0x00,0x00,0x00,0x01,0x0F,0x1F,0x1F,0x1F,0x1F,0x0F,0x01,
+             -0x00,0x00,0x00,
+ 380                  0x00,0x80,0xE0,0xE0,0xF0,0x70,0x30,0x70,0xF0,0xE0,0xE0,0x80,0x00,0x00,0x00,0xF0,0xF0,0xF0,0xF0,0x00,0x00,
+             -0x00,0x00,0x00,0x00,0x00,0xF0,0xF0,0xF0,0xF0,0x30,0x30,0x30,0x30,0x30,0x00,0x00,0x00,0xF0,0xF0,0xF0,0xF0,0x30,0x70,0xF0,
+             -0xF0,0xE0,0x80,
+ 381                  0x00,0x0F,0x3F,0x3F,0x7F,0x70,0x60,0x70,0x7F,0x3F,0x3F,0x0F,0x00,0x00,0x00,0x7F,0x7F,0x7F,0x7F,0x60,0x60,
+             -0x60,0x60,0x00,0x00,0x00,0x7F,0x7F,0x7F,0x7F,0x63,0x63,0x63,0x63,0x60,0x00,0x00,0x00,0x7F,0x7F,0x7F,0x7F,0x60,0x70,0x7F,
+             -0x7F,0x3F,0x0F,
+ 382          };
+ 383          
+ 384          
+ 385          unsigned char code Ascii_1[240][5]={            // Refer to "Times New Roman" Font Database...
+ 386                                                          //   Basic Characters
+ 387                  {0x00,0x00,0x4F,0x00,0x00},             //   (  1)  ! - 0x0021 Exclamation Mark
+ 388                  {0x00,0x07,0x00,0x07,0x00},             //   (  2)  " - 0x0022 Quotation Mark
+ 389                  {0x14,0x7F,0x14,0x7F,0x14},             //   (  3)  # - 0x0023 Number Sign
+ 390                  {0x24,0x2A,0x7F,0x2A,0x12},             //   (  4)  $ - 0x0024 Dollar Sign
+ 391                  {0x23,0x13,0x08,0x64,0x62},             //   (  5)  % - 0x0025 Percent Sign
+ 392                  {0x36,0x49,0x55,0x22,0x50},             //   (  6)  & - 0x0026 Ampersand
+ 393                  {0x00,0x05,0x03,0x00,0x00},             //   (  7)  ' - 0x0027 Apostrophe
+ 394                  {0x00,0x1C,0x22,0x41,0x00},             //   (  8)  ( - 0x0028 Left Parenthesis
+ 395                  {0x00,0x41,0x22,0x1C,0x00},             //   (  9)  ) - 0x0029 Right Parenthesis
+ 396                  {0x14,0x08,0x3E,0x08,0x14},             //   ( 10)  * - 0x002A Asterisk
+ 397                  {0x08,0x08,0x3E,0x08,0x08},             //   ( 11)  + - 0x002B Plus Sign
+ 398                  {0x00,0x50,0x30,0x00,0x00},             //   ( 12)  , - 0x002C Comma
+ 399                  {0x08,0x08,0x08,0x08,0x08},             //   ( 13)  - - 0x002D Hyphen-Minus
+ 400                  {0x00,0x60,0x60,0x00,0x00},             //   ( 14)  . - 0x002E Full Stop
+ 401                  {0x20,0x10,0x08,0x04,0x02},             //   ( 15)  / - 0x002F Solidus
+ 402                  {0x3E,0x51,0x49,0x45,0x3E},             //   ( 16)  0 - 0x0030 Digit Zero
+ 403                  {0x00,0x42,0x7F,0x40,0x00},             //   ( 17)  1 - 0x0031 Digit One
+ 404                  {0x42,0x61,0x51,0x49,0x46},             //   ( 18)  2 - 0x0032 Digit Two
+ 405                  {0x21,0x41,0x45,0x4B,0x31},             //   ( 19)  3 - 0x0033 Digit Three
+ 406                  {0x18,0x14,0x12,0x7F,0x10},             //   ( 20)  4 - 0x0034 Digit Four
+ 407                  {0x27,0x45,0x45,0x45,0x39},             //   ( 21)  5 - 0x0035 Digit Five
+ 408                  {0x3C,0x4A,0x49,0x49,0x30},             //   ( 22)  6 - 0x0036 Digit Six
+ 409                  {0x01,0x71,0x09,0x05,0x03},             //   ( 23)  7 - 0x0037 Digit Seven
+ 410                  {0x36,0x49,0x49,0x49,0x36},             //   ( 24)  8 - 0x0038 Digit Eight
+ 411                  {0x06,0x49,0x49,0x29,0x1E},             //   ( 25)  9 - 0x0039 Dight Nine
+ 412                  {0x00,0x36,0x36,0x00,0x00},             //   ( 26)  : - 0x003A Colon
+ 413                  {0x00,0x56,0x36,0x00,0x00},             //   ( 27)  ; - 0x003B Semicolon
+ 414                  {0x08,0x14,0x22,0x41,0x00},             //   ( 28)  < - 0x003C Less-Than Sign
+ 415                  {0x14,0x14,0x14,0x14,0x14},             //   ( 29)  = - 0x003D Equals Sign
+ 416                  {0x00,0x41,0x22,0x14,0x08},             //   ( 30)  > - 0x003E Greater-Than Sign
+ 417                  {0x02,0x01,0x51,0x09,0x06},             //   ( 31)  ? - 0x003F Question Mark
+ 418                  {0x32,0x49,0x79,0x41,0x3E},             //   ( 32)  @ - 0x0040 Commercial At
+ 419                  {0x7E,0x11,0x11,0x11,0x7E},             //   ( 33)  A - 0x0041 Latin Capital Letter A
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 8   
+
+ 420                  {0x7F,0x49,0x49,0x49,0x36},             //   ( 34)  B - 0x0042 Latin Capital Letter B
+ 421                  {0x3E,0x41,0x41,0x41,0x22},             //   ( 35)  C - 0x0043 Latin Capital Letter C
+ 422                  {0x7F,0x41,0x41,0x22,0x1C},             //   ( 36)  D - 0x0044 Latin Capital Letter D
+ 423                  {0x7F,0x49,0x49,0x49,0x41},             //   ( 37)  E - 0x0045 Latin Capital Letter E
+ 424                  {0x7F,0x09,0x09,0x09,0x01},             //   ( 38)  F - 0x0046 Latin Capital Letter F
+ 425                  {0x3E,0x41,0x49,0x49,0x7A},             //   ( 39)  G - 0x0047 Latin Capital Letter G
+ 426                  {0x7F,0x08,0x08,0x08,0x7F},             //   ( 40)  H - 0x0048 Latin Capital Letter H
+ 427                  {0x00,0x41,0x7F,0x41,0x00},             //   ( 41)  I - 0x0049 Latin Capital Letter I
+ 428                  {0x20,0x40,0x41,0x3F,0x01},             //   ( 42)  J - 0x004A Latin Capital Letter J
+ 429                  {0x7F,0x08,0x14,0x22,0x41},             //   ( 43)  K - 0x004B Latin Capital Letter K
+ 430                  {0x7F,0x40,0x40,0x40,0x40},             //   ( 44)  L - 0x004C Latin Capital Letter L
+ 431                  {0x7F,0x02,0x0C,0x02,0x7F},             //   ( 45)  M - 0x004D Latin Capital Letter M
+ 432                  {0x7F,0x04,0x08,0x10,0x7F},             //   ( 46)  N - 0x004E Latin Capital Letter N
+ 433                  {0x3E,0x41,0x41,0x41,0x3E},             //   ( 47)  O - 0x004F Latin Capital Letter O
+ 434                  {0x7F,0x09,0x09,0x09,0x06},             //   ( 48)  P - 0x0050 Latin Capital Letter P
+ 435                  {0x3E,0x41,0x51,0x21,0x5E},             //   ( 49)  Q - 0x0051 Latin Capital Letter Q
+ 436                  {0x7F,0x09,0x19,0x29,0x46},             //   ( 50)  R - 0x0052 Latin Capital Letter R
+ 437                  {0x46,0x49,0x49,0x49,0x31},             //   ( 51)  S - 0x0053 Latin Capital Letter S
+ 438                  {0x01,0x01,0x7F,0x01,0x01},             //   ( 52)  T - 0x0054 Latin Capital Letter T
+ 439                  {0x3F,0x40,0x40,0x40,0x3F},             //   ( 53)  U - 0x0055 Latin Capital Letter U
+ 440                  {0x1F,0x20,0x40,0x20,0x1F},             //   ( 54)  V - 0x0056 Latin Capital Letter V
+ 441                  {0x3F,0x40,0x38,0x40,0x3F},             //   ( 55)  W - 0x0057 Latin Capital Letter W
+ 442                  {0x63,0x14,0x08,0x14,0x63},             //   ( 56)  X - 0x0058 Latin Capital Letter X
+ 443                  {0x07,0x08,0x70,0x08,0x07},             //   ( 57)  Y - 0x0059 Latin Capital Letter Y
+ 444                  {0x61,0x51,0x49,0x45,0x43},             //   ( 58)  Z - 0x005A Latin Capital Letter Z
+ 445                  {0x00,0x7F,0x41,0x41,0x00},             //   ( 59)  [ - 0x005B Left Square Bracket
+ 446                  {0x02,0x04,0x08,0x10,0x20},             //   ( 60)  \ - 0x005C Reverse Solidus
+ 447                  {0x00,0x41,0x41,0x7F,0x00},             //   ( 61)  ] - 0x005D Right Square Bracket
+ 448                  {0x04,0x02,0x01,0x02,0x04},             //   ( 62)  ^ - 0x005E Circumflex Accent
+ 449                  {0x40,0x40,0x40,0x40,0x40},             //   ( 63)  _ - 0x005F Low Line
+ 450                  {0x01,0x02,0x04,0x00,0x00},             //   ( 64)  ` - 0x0060 Grave Accent
+ 451                  {0x20,0x54,0x54,0x54,0x78},             //   ( 65)  a - 0x0061 Latin Small Letter A
+ 452                  {0x7F,0x48,0x44,0x44,0x38},             //   ( 66)  b - 0x0062 Latin Small Letter B
+ 453                  {0x38,0x44,0x44,0x44,0x20},             //   ( 67)  c - 0x0063 Latin Small Letter C
+ 454                  {0x38,0x44,0x44,0x48,0x7F},             //   ( 68)  d - 0x0064 Latin Small Letter D
+ 455                  {0x38,0x54,0x54,0x54,0x18},             //   ( 69)  e - 0x0065 Latin Small Letter E
+ 456                  {0x08,0x7E,0x09,0x01,0x02},             //   ( 70)  f - 0x0066 Latin Small Letter F
+ 457                  {0x06,0x49,0x49,0x49,0x3F},             //   ( 71)  g - 0x0067 Latin Small Letter G
+ 458                  {0x7F,0x08,0x04,0x04,0x78},             //   ( 72)  h - 0x0068 Latin Small Letter H
+ 459                  {0x00,0x44,0x7D,0x40,0x00},             //   ( 73)  i - 0x0069 Latin Small Letter I
+ 460                  {0x20,0x40,0x44,0x3D,0x00},             //   ( 74)  j - 0x006A Latin Small Letter J
+ 461                  {0x7F,0x10,0x28,0x44,0x00},             //   ( 75)  k - 0x006B Latin Small Letter K
+ 462                  {0x00,0x41,0x7F,0x40,0x00},             //   ( 76)  l - 0x006C Latin Small Letter L
+ 463                  {0x7C,0x04,0x18,0x04,0x7C},             //   ( 77)  m - 0x006D Latin Small Letter M
+ 464                  {0x7C,0x08,0x04,0x04,0x78},             //   ( 78)  n - 0x006E Latin Small Letter N
+ 465                  {0x38,0x44,0x44,0x44,0x38},             //   ( 79)  o - 0x006F Latin Small Letter O
+ 466                  {0x7C,0x14,0x14,0x14,0x08},             //   ( 80)  p - 0x0070 Latin Small Letter P
+ 467                  {0x08,0x14,0x14,0x18,0x7C},             //   ( 81)  q - 0x0071 Latin Small Letter Q
+ 468                  {0x7C,0x08,0x04,0x04,0x08},             //   ( 82)  r - 0x0072 Latin Small Letter R
+ 469                  {0x48,0x54,0x54,0x54,0x20},             //   ( 83)  s - 0x0073 Latin Small Letter S
+ 470                  {0x04,0x3F,0x44,0x40,0x20},             //   ( 84)  t - 0x0074 Latin Small Letter T
+ 471                  {0x3C,0x40,0x40,0x20,0x7C},             //   ( 85)  u - 0x0075 Latin Small Letter U
+ 472                  {0x1C,0x20,0x40,0x20,0x1C},             //   ( 86)  v - 0x0076 Latin Small Letter V
+ 473                  {0x3C,0x40,0x30,0x40,0x3C},             //   ( 87)  w - 0x0077 Latin Small Letter W
+ 474                  {0x44,0x28,0x10,0x28,0x44},             //   ( 88)  x - 0x0078 Latin Small Letter X
+ 475                  {0x0C,0x50,0x50,0x50,0x3C},             //   ( 89)  y - 0x0079 Latin Small Letter Y
+ 476                  {0x44,0x64,0x54,0x4C,0x44},             //   ( 90)  z - 0x007A Latin Small Letter Z
+ 477                  {0x00,0x08,0x36,0x41,0x00},             //   ( 91)  { - 0x007B Left Curly Bracket
+ 478                  {0x00,0x00,0x7F,0x00,0x00},             //   ( 92)  | - 0x007C Vertical Line
+ 479                  {0x00,0x41,0x36,0x08,0x00},             //   ( 93)  } - 0x007D Right Curly Bracket
+ 480                  {0x02,0x01,0x02,0x04,0x02},             //   ( 94)  ~ - 0x007E Tilde
+ 481                  {0x3E,0x55,0x55,0x41,0x22},             //   ( 95)  C - 0x0080 <Control>
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 9   
+
+ 482                  {0x00,0x00,0x00,0x00,0x00},             //   ( 96)    - 0x00A0 No-Break Space
+ 483                  {0x00,0x00,0x79,0x00,0x00},             //   ( 97)  ! - 0x00A1 Inverted Exclamation Mark
+ 484                  {0x18,0x24,0x74,0x2E,0x24},             //   ( 98)  c - 0x00A2 Cent Sign
+ 485                  {0x48,0x7E,0x49,0x42,0x40},             //   ( 99)  L - 0x00A3 Pound Sign
+ 486                  {0x5D,0x22,0x22,0x22,0x5D},             //   (100)  o - 0x00A4 Currency Sign
+ 487                  {0x15,0x16,0x7C,0x16,0x15},             //   (101)  Y - 0x00A5 Yen Sign
+ 488                  {0x00,0x00,0x77,0x00,0x00},             //   (102)  | - 0x00A6 Broken Bar
+ 489                  {0x0A,0x55,0x55,0x55,0x28},             //   (103)    - 0x00A7 Section Sign
+ 490                  {0x00,0x01,0x00,0x01,0x00},             //   (104)  " - 0x00A8 Diaeresis
+ 491                  {0x00,0x0A,0x0D,0x0A,0x04},             //   (105)    - 0x00AA Feminine Ordinal Indicator
+ 492                  {0x08,0x14,0x2A,0x14,0x22},             //   (106) << - 0x00AB Left-Pointing Double Angle Quotation Mark
+ 493                  {0x04,0x04,0x04,0x04,0x1C},             //   (107)    - 0x00AC Not Sign
+ 494                  {0x00,0x08,0x08,0x08,0x00},             //   (108)  - - 0x00AD Soft Hyphen
+ 495                  {0x01,0x01,0x01,0x01,0x01},             //   (109)    - 0x00AF Macron
+ 496                  {0x00,0x02,0x05,0x02,0x00},             //   (110)    - 0x00B0 Degree Sign
+ 497                  {0x44,0x44,0x5F,0x44,0x44},             //   (111) +- - 0x00B1 Plus-Minus Sign
+ 498                  {0x00,0x00,0x04,0x02,0x01},             //   (112)  ` - 0x00B4 Acute Accent
+ 499                  {0x7E,0x20,0x20,0x10,0x3E},             //   (113)  u - 0x00B5 Micro Sign
+ 500                  {0x06,0x0F,0x7F,0x00,0x7F},             //   (114)    - 0x00B6 Pilcrow Sign
+ 501                  {0x00,0x18,0x18,0x00,0x00},             //   (115)  . - 0x00B7 Middle Dot
+ 502                  {0x00,0x40,0x50,0x20,0x00},             //   (116)    - 0x00B8 Cedilla
+ 503                  {0x00,0x0A,0x0D,0x0A,0x00},             //   (117)    - 0x00BA Masculine Ordinal Indicator
+ 504                  {0x22,0x14,0x2A,0x14,0x08},             //   (118) >> - 0x00BB Right-Pointing Double Angle Quotation Mark
+ 505                  {0x17,0x08,0x34,0x2A,0x7D},             //   (119) /4 - 0x00BC Vulgar Fraction One Quarter
+ 506                  {0x17,0x08,0x04,0x6A,0x59},             //   (120) /2 - 0x00BD Vulgar Fraction One Half
+ 507                  {0x30,0x48,0x45,0x40,0x20},             //   (121)  ? - 0x00BF Inverted Question Mark
+ 508                  {0x70,0x29,0x26,0x28,0x70},             //   (122) `A - 0x00C0 Latin Capital Letter A with Grave
+ 509                  {0x70,0x28,0x26,0x29,0x70},             //   (123) 'A - 0x00C1 Latin Capital Letter A with Acute
+ 510                  {0x70,0x2A,0x25,0x2A,0x70},             //   (124) ^A - 0x00C2 Latin Capital Letter A with Circumflex
+ 511                  {0x72,0x29,0x26,0x29,0x70},             //   (125) ~A - 0x00C3 Latin Capital Letter A with Tilde
+ 512                  {0x70,0x29,0x24,0x29,0x70},             //   (126) "A - 0x00C4 Latin Capital Letter A with Diaeresis
+ 513                  {0x70,0x2A,0x2D,0x2A,0x70},             //   (127)  A - 0x00C5 Latin Capital Letter A with Ring Above
+ 514                  {0x7E,0x11,0x7F,0x49,0x49},             //   (128) AE - 0x00C6 Latin Capital Letter Ae
+ 515                  {0x0E,0x51,0x51,0x71,0x11},             //   (129)  C - 0x00C7 Latin Capital Letter C with Cedilla
+ 516                  {0x7C,0x55,0x56,0x54,0x44},             //   (130) `E - 0x00C8 Latin Capital Letter E with Grave
+ 517                  {0x7C,0x55,0x56,0x54,0x44},             //   (131) 'E - 0x00C9 Latin Capital Letter E with Acute
+ 518                  {0x7C,0x56,0x55,0x56,0x44},             //   (132) ^E - 0x00CA Latin Capital Letter E with Circumflex
+ 519                  {0x7C,0x55,0x54,0x55,0x44},             //   (133) "E - 0x00CB Latin Capital Letter E with Diaeresis
+ 520                  {0x00,0x45,0x7E,0x44,0x00},             //   (134) `I - 0x00CC Latin Capital Letter I with Grave
+ 521                  {0x00,0x44,0x7E,0x45,0x00},             //   (135) 'I - 0x00CD Latin Capital Letter I with Acute
+ 522                  {0x00,0x46,0x7D,0x46,0x00},             //   (136) ^I - 0x00CE Latin Capital Letter I with Circumflex
+ 523                  {0x00,0x45,0x7C,0x45,0x00},             //   (137) "I - 0x00CF Latin Capital Letter I with Diaeresis
+ 524                  {0x7F,0x49,0x49,0x41,0x3E},             //   (138)  D - 0x00D0 Latin Capital Letter Eth
+ 525                  {0x7C,0x0A,0x11,0x22,0x7D},             //   (139) ~N - 0x00D1 Latin Capital Letter N with Tilde
+ 526                  {0x38,0x45,0x46,0x44,0x38},             //   (140) `O - 0x00D2 Latin Capital Letter O with Grave
+ 527                  {0x38,0x44,0x46,0x45,0x38},             //   (141) 'O - 0x00D3 Latin Capital Letter O with Acute
+ 528                  {0x38,0x46,0x45,0x46,0x38},             //   (142) ^O - 0x00D4 Latin Capital Letter O with Circumflex
+ 529                  {0x38,0x46,0x45,0x46,0x39},             //   (143) ~O - 0x00D5 Latin Capital Letter O with Tilde
+ 530                  {0x38,0x45,0x44,0x45,0x38},             //   (144) "O - 0x00D6 Latin Capital Letter O with Diaeresis
+ 531                  {0x22,0x14,0x08,0x14,0x22},             //   (145)  x - 0x00D7 Multiplcation Sign
+ 532                  {0x2E,0x51,0x49,0x45,0x3A},             //   (146)  O - 0x00D8 Latin Capital Letter O with Stroke
+ 533                  {0x3C,0x41,0x42,0x40,0x3C},             //   (147) `U - 0x00D9 Latin Capital Letter U with Grave
+ 534                  {0x3C,0x40,0x42,0x41,0x3C},             //   (148) 'U - 0x00DA Latin Capital Letter U with Acute
+ 535                  {0x3C,0x42,0x41,0x42,0x3C},             //   (149) ^U - 0x00DB Latin Capital Letter U with Circumflex
+ 536                  {0x3C,0x41,0x40,0x41,0x3C},             //   (150) "U - 0x00DC Latin Capital Letter U with Diaeresis
+ 537                  {0x0C,0x10,0x62,0x11,0x0C},             //   (151) `Y - 0x00DD Latin Capital Letter Y with Acute
+ 538                  {0x7F,0x12,0x12,0x12,0x0C},             //   (152)  P - 0x00DE Latin Capital Letter Thom
+ 539                  {0x40,0x3E,0x01,0x49,0x36},             //   (153)  B - 0x00DF Latin Capital Letter Sharp S
+ 540                  {0x20,0x55,0x56,0x54,0x78},             //   (154) `a - 0x00E0 Latin Small Letter A with Grave
+ 541                  {0x20,0x54,0x56,0x55,0x78},             //   (155) 'a - 0x00E1 Latin Small Letter A with Acute
+ 542                  {0x20,0x56,0x55,0x56,0x78},             //   (156) ^a - 0x00E2 Latin Small Letter A with Circumflex
+ 543                  {0x20,0x55,0x56,0x55,0x78},             //   (157) ~a - 0x00E3 Latin Small Letter A with Tilde
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 10  
+
+ 544                  {0x20,0x55,0x54,0x55,0x78},             //   (158) "a - 0x00E4 Latin Small Letter A with Diaeresis
+ 545                  {0x20,0x56,0x57,0x56,0x78},             //   (159)  a - 0x00E5 Latin Small Letter A with Ring Above
+ 546                  {0x24,0x54,0x78,0x54,0x58},             //   (160) ae - 0x00E6 Latin Small Letter Ae
+ 547                  {0x0C,0x52,0x52,0x72,0x13},             //   (161)  c - 0x00E7 Latin Small Letter c with Cedilla
+ 548                  {0x38,0x55,0x56,0x54,0x18},             //   (162) `e - 0x00E8 Latin Small Letter E with Grave
+ 549                  {0x38,0x54,0x56,0x55,0x18},             //   (163) 'e - 0x00E9 Latin Small Letter E with Acute
+ 550                  {0x38,0x56,0x55,0x56,0x18},             //   (164) ^e - 0x00EA Latin Small Letter E with Circumflex
+ 551                  {0x38,0x55,0x54,0x55,0x18},             //   (165) "e - 0x00EB Latin Small Letter E with Diaeresis
+ 552                  {0x00,0x49,0x7A,0x40,0x00},             //   (166) `i - 0x00EC Latin Small Letter I with Grave
+ 553                  {0x00,0x48,0x7A,0x41,0x00},             //   (167) 'i - 0x00ED Latin Small Letter I with Acute
+ 554                  {0x00,0x4A,0x79,0x42,0x00},             //   (168) ^i - 0x00EE Latin Small Letter I with Circumflex
+ 555                  {0x00,0x4A,0x78,0x42,0x00},             //   (169) "i - 0x00EF Latin Small Letter I with Diaeresis
+ 556                  {0x31,0x4A,0x4E,0x4A,0x30},             //   (170)    - 0x00F0 Latin Small Letter Eth
+ 557                  {0x7A,0x11,0x0A,0x09,0x70},             //   (171) ~n - 0x00F1 Latin Small Letter N with Tilde
+ 558                  {0x30,0x49,0x4A,0x48,0x30},             //   (172) `o - 0x00F2 Latin Small Letter O with Grave
+ 559                  {0x30,0x48,0x4A,0x49,0x30},             //   (173) 'o - 0x00F3 Latin Small Letter O with Acute
+ 560                  {0x30,0x4A,0x49,0x4A,0x30},             //   (174) ^o - 0x00F4 Latin Small Letter O with Circumflex
+ 561                  {0x30,0x4A,0x49,0x4A,0x31},             //   (175) ~o - 0x00F5 Latin Small Letter O with Tilde
+ 562                  {0x30,0x4A,0x48,0x4A,0x30},             //   (176) "o - 0x00F6 Latin Small Letter O with Diaeresis
+ 563                  {0x08,0x08,0x2A,0x08,0x08},             //   (177)  + - 0x00F7 Division Sign
+ 564                  {0x38,0x64,0x54,0x4C,0x38},             //   (178)  o - 0x00F8 Latin Small Letter O with Stroke
+ 565                  {0x38,0x41,0x42,0x20,0x78},             //   (179) `u - 0x00F9 Latin Small Letter U with Grave
+ 566                  {0x38,0x40,0x42,0x21,0x78},             //   (180) 'u - 0x00FA Latin Small Letter U with Acute
+ 567                  {0x38,0x42,0x41,0x22,0x78},             //   (181) ^u - 0x00FB Latin Small Letter U with Circumflex
+ 568                  {0x38,0x42,0x40,0x22,0x78},             //   (182) "u - 0x00FC Latin Small Letter U with Diaeresis
+ 569                  {0x0C,0x50,0x52,0x51,0x3C},             //   (183) 'y - 0x00FD Latin Small Letter Y with Acute
+ 570                  {0x7E,0x14,0x14,0x14,0x08},             //   (184)  p - 0x00FE Latin Small Letter Thom
+ 571                  {0x0C,0x51,0x50,0x51,0x3C},             //   (185) "y - 0x00FF Latin Small Letter Y with Diaeresis
+ 572                  {0x1E,0x09,0x09,0x29,0x5E},             //   (186)  A - 0x0104 Latin Capital Letter A with Ogonek
+ 573                  {0x08,0x15,0x15,0x35,0x4E},             //   (187)  a - 0x0105 Latin Small Letter A with Ogonek
+ 574                  {0x38,0x44,0x46,0x45,0x20},             //   (188) 'C - 0x0106 Latin Capital Letter C with Acute
+ 575                  {0x30,0x48,0x4A,0x49,0x20},             //   (189) 'c - 0x0107 Latin Small Letter C with Acute
+ 576                  {0x38,0x45,0x46,0x45,0x20},             //   (190)  C - 0x010C Latin Capital Letter C with Caron
+ 577                  {0x30,0x49,0x4A,0x49,0x20},             //   (191)  c - 0x010D Latin Small Letter C with Caron
+ 578                  {0x7C,0x45,0x46,0x45,0x38},             //   (192)  D - 0x010E Latin Capital Letter D with Caron
+ 579                  {0x20,0x50,0x50,0x7C,0x03},             //   (193) d' - 0x010F Latin Small Letter D with Caron
+ 580                  {0x1F,0x15,0x15,0x35,0x51},             //   (194)  E - 0x0118 Latin Capital Letter E with Ogonek
+ 581                  {0x0E,0x15,0x15,0x35,0x46},             //   (195)  e - 0x0119 Latin Small Letter E with Ogonek
+ 582                  {0x7C,0x55,0x56,0x55,0x44},             //   (196)  E - 0x011A Latin Capital Letter E with Caron
+ 583                  {0x38,0x55,0x56,0x55,0x18},             //   (197)  e - 0x011B Latin Small Letter E with Caron
+ 584                  {0x00,0x44,0x7C,0x40,0x00},             //   (198)  i - 0x0131 Latin Small Letter Dotless I
+ 585                  {0x7F,0x48,0x44,0x40,0x40},             //   (199)  L - 0x0141 Latin Capital Letter L with Stroke
+ 586                  {0x00,0x49,0x7F,0x44,0x00},             //   (200)  l - 0x0142 Latin Small Letter L with Stroke
+ 587                  {0x7C,0x08,0x12,0x21,0x7C},             //   (201) 'N - 0x0143 Latin Capital Letter N with Acute
+ 588                  {0x78,0x10,0x0A,0x09,0x70},             //   (202) 'n - 0x0144 Latin Small Letter N with Acute
+ 589                  {0x7C,0x09,0x12,0x21,0x7C},             //   (203)  N - 0x0147 Latin Capital Letter N with Caron
+ 590                  {0x78,0x11,0x0A,0x09,0x70},             //   (204)  n - 0x0148 Latin Small Letter N with Caron
+ 591                  {0x38,0x47,0x44,0x47,0x38},             //   (205) "O - 0x0150 Latin Capital Letter O with Double Acute
+ 592                  {0x30,0x4B,0x48,0x4B,0x30},             //   (206) "o - 0x0151 Latin Small Letter O with Double Acute
+ 593                  {0x3E,0x41,0x7F,0x49,0x49},             //   (207) OE - 0x0152 Latin Capital Ligature Oe
+ 594                  {0x38,0x44,0x38,0x54,0x58},             //   (208) oe - 0x0153 Latin Small Ligature Oe
+ 595                  {0x7C,0x15,0x16,0x35,0x48},             //   (209)  R - 0x0158 Latin Capital Letter R with Caron
+ 596                  {0x78,0x11,0x0A,0x09,0x10},             //   (210)  r - 0x0159 Latin Small Letter R with Caron
+ 597                  {0x48,0x54,0x56,0x55,0x20},             //   (211) 'S - 0x015A Latin Capital Letter S with Acute
+ 598                  {0x20,0x48,0x56,0x55,0x20},             //   (212) 's - 0x015B Latin Small Letter S with Acute
+ 599                  {0x48,0x55,0x56,0x55,0x20},             //   (213)  S - 0x0160 Latin Capital Letter S with Caron
+ 600                  {0x20,0x49,0x56,0x55,0x20},             //   (214)  s - 0x0161 Latin Small Letter S with Caron
+ 601                  {0x04,0x05,0x7E,0x05,0x04},             //   (215)  T - 0x0164 Latin Capital Letter T with Caron
+ 602                  {0x08,0x3C,0x48,0x22,0x01},             //   (216) t' - 0x0165 Latin Small Letter T with Caron
+ 603                  {0x3C,0x42,0x45,0x42,0x3C},             //   (217)  U - 0x016E Latin Capital Letter U with Ring Above
+ 604                  {0x38,0x42,0x45,0x22,0x78},             //   (218)  u - 0x016F Latin Small Letter U with Ring Above
+ 605                  {0x3C,0x43,0x40,0x43,0x3C},             //   (219) "U - 0x0170 Latin Capital Letter U with Double Acute
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 11  
+
+ 606                  {0x38,0x43,0x40,0x23,0x78},             //   (220) "u - 0x0171 Latin Small Letter U with Double Acute
+ 607                  {0x0C,0x11,0x60,0x11,0x0C},             //   (221) "Y - 0x0178 Latin Capital Letter Y with Diaeresis
+ 608                  {0x44,0x66,0x55,0x4C,0x44},             //   (222) 'Z - 0x0179 Latin Capital Letter Z with Acute
+ 609                  {0x48,0x6A,0x59,0x48,0x00},             //   (223) 'z - 0x017A Latin Small Letter Z with Acute
+ 610                  {0x44,0x64,0x55,0x4C,0x44},             //   (224)  Z - 0x017B Latin Capital Letter Z with Dot Above
+ 611                  {0x48,0x68,0x5A,0x48,0x00},             //   (225)  z - 0x017C Latin Small Letter Z with Dot Above
+ 612                  {0x44,0x65,0x56,0x4D,0x44},             //   (226)  Z - 0x017D Latin Capital Letter Z with Caron
+ 613                  {0x48,0x69,0x5A,0x49,0x00},             //   (227)  z - 0x017E Latin Small Letter Z with Caron
+ 614                  {0x00,0x02,0x01,0x02,0x00},             //   (228)  ^ - 0x02C6 Modifier Letter Circumflex Accent
+ 615                  {0x00,0x01,0x02,0x01,0x00},             //   (229)    - 0x02C7 Caron
+ 616                  {0x00,0x01,0x01,0x01,0x00},             //   (230)    - 0x02C9 Modifier Letter Macron
+ 617                  {0x01,0x02,0x02,0x01,0x00},             //   (231)    - 0x02D8 Breve
+ 618                  {0x00,0x00,0x01,0x00,0x00},             //   (232)    - 0x02D9 Dot Above
+ 619                  {0x00,0x02,0x05,0x02,0x00},             //   (233)    - 0x02DA Ring Above
+ 620                  {0x02,0x01,0x02,0x01,0x00},             //   (234)  ~ - 0x02DC Small Tilde
+ 621                  {0x7F,0x05,0x15,0x3A,0x50},             //   (235) Pt - 0x20A7 Peseta Sign
+ 622                  {0x3E,0x55,0x55,0x41,0x22},             //   (236)  C - 0x20AC Euro Sign
+ 623                  {0x18,0x14,0x08,0x14,0x0C},             //   (237)    - 0x221E Infinity
+ 624                  {0x44,0x4A,0x4A,0x51,0x51},             //   (238)  < - 0x2264 Less-Than or Equal to
+ 625                  {0x51,0x51,0x4A,0x4A,0x44},             //   (239)  > - 0x2265 Greater-Than or Equal to
+ 626                  {0x74,0x42,0x41,0x42,0x74},             //   (240)    - 0x2302 House
+ 627          };
+ 628          
+ 629          
+ 630          unsigned char code Ascii_2[107][5]={            // Refer to "Times New Roman" Font Database...
+ 631                                                          //   Greek & Japanese Letters
+ 632                  {0x7E,0x11,0x11,0x11,0x7E},             //   (  1)  A - 0x0391 Greek Capital Letter Alpha
+ 633                  {0x7F,0x49,0x49,0x49,0x36},             //   (  2)  B - 0x0392 Greek Capital Letter Beta
+ 634                  {0x7F,0x02,0x01,0x01,0x03},             //   (  3)    - 0x0393 Greek Capital Letter Gamma
+ 635                  {0x70,0x4E,0x41,0x4E,0x70},             //   (  4)    - 0x0394 Greek Capital Letter Delta
+ 636                  {0x7F,0x49,0x49,0x49,0x41},             //   (  5)  E - 0x0395 Greek Capital Letter Epsilon
+ 637                  {0x61,0x51,0x49,0x45,0x43},             //   (  6)  Z - 0x0396 Greek Capital Letter Zeta
+ 638                  {0x7F,0x08,0x08,0x08,0x7F},             //   (  7)  H - 0x0397 Greek Capital Letter Eta
+ 639                  {0x3E,0x49,0x49,0x49,0x3E},             //   (  8)    - 0x0398 Greek Capital Letter Theta
+ 640                  {0x00,0x41,0x7F,0x41,0x00},             //   (  9)  I - 0x0399 Greek Capital Letter Iota
+ 641                  {0x7F,0x08,0x14,0x22,0x41},             //   ( 10)  K - 0x039A Greek Capital Letter Kappa
+ 642                  {0x70,0x0E,0x01,0x0E,0x70},             //   ( 11)    - 0x039B Greek Capital Letter Lamda
+ 643                  {0x7F,0x02,0x0C,0x02,0x7F},             //   ( 12)  M - 0x039C Greek Capital Letter Mu
+ 644                  {0x7F,0x04,0x08,0x10,0x7F},             //   ( 13)  N - 0x039D Greek Capital Letter Nu
+ 645                  {0x63,0x5D,0x49,0x5D,0x63},             //   ( 14)    - 0x039E Greek Capital Letter Xi
+ 646                  {0x3E,0x41,0x41,0x41,0x3E},             //   ( 15)  O - 0x039F Greek Capital Letter Omicron
+ 647                  {0x41,0x3F,0x01,0x3F,0x41},             //   ( 16)    - 0x03A0 Greek Capital Letter Pi
+ 648                  {0x7F,0x09,0x09,0x09,0x06},             //   ( 17)  P - 0x03A1 Greek Capital Letter Rho
+ 649                  {0x63,0x55,0x49,0x41,0x41},             //   ( 18)    - 0x03A3 Greek Capital Letter Sigma
+ 650                  {0x01,0x01,0x7F,0x01,0x01},             //   ( 19)  T - 0x03A4 Greek Capital Letter Tau
+ 651                  {0x03,0x01,0x7E,0x01,0x03},             //   ( 20)    - 0x03A5 Greek Capital Letter Upsilon
+ 652                  {0x08,0x55,0x7F,0x55,0x08},             //   ( 21)    - 0x03A6 Greek Capital Letter Phi
+ 653                  {0x63,0x14,0x08,0x14,0x63},             //   ( 22)  X - 0x03A7 Greek Capital Letter Chi
+ 654                  {0x07,0x48,0x7F,0x48,0x07},             //   ( 23)    - 0x03A8 Greek Capital Letter Psi
+ 655                  {0x5E,0x61,0x01,0x61,0x5E},             //   ( 24)    - 0x03A9 Greek Capital Letter Omega
+ 656                  {0x38,0x44,0x48,0x30,0x4C},             //   ( 25)  a - 0x03B1 Greek Small Letter Alpha
+ 657                  {0x7C,0x2A,0x2A,0x2A,0x14},             //   ( 26)  B - 0x03B2 Greek Small Letter Beta
+ 658                  {0x44,0x38,0x04,0x04,0x08},             //   ( 27)  r - 0x03B3 Greek Small Letter Gamma
+ 659                  {0x30,0x4B,0x4D,0x59,0x30},             //   ( 28)    - 0x03B4 Greek Small Letter Delta
+ 660                  {0x28,0x54,0x54,0x44,0x20},             //   ( 29)    - 0x03B5 Greek Small Letter Epsilon
+ 661                  {0x00,0x18,0x55,0x52,0x22},             //   ( 30)    - 0x03B6 Greek Small Letter Zeta
+ 662                  {0x3E,0x04,0x02,0x02,0x7C},             //   ( 31)  n - 0x03B7 Greek Small Letter Eta
+ 663                  {0x3C,0x4A,0x4A,0x4A,0x3C},             //   ( 32)    - 0x03B8 Greek Small Letter Theta
+ 664                  {0x00,0x3C,0x40,0x20,0x00},             //   ( 33)  i - 0x03B9 Greek Small Letter Iota
+ 665                  {0x7C,0x10,0x28,0x44,0x40},             //   ( 34)  k - 0x03BA Greek Small Letter Kappa
+ 666                  {0x41,0x32,0x0C,0x30,0x40},             //   ( 35)    - 0x03BB Greek Small Letter Lamda
+ 667                  {0x7E,0x20,0x20,0x10,0x3E},             //   ( 36)  u - 0x03BC Greek Small Letter Mu
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 12  
+
+ 668                  {0x1C,0x20,0x40,0x20,0x1C},             //   ( 37)  v - 0x03BD Greek Small Letter Nu
+ 669                  {0x14,0x2B,0x2A,0x2A,0x60},             //   ( 38)    - 0x03BE Greek Small Letter Xi
+ 670                  {0x38,0x44,0x44,0x44,0x38},             //   ( 39)  o - 0x03BF Greek Small Letter Omicron
+ 671                  {0x44,0x3C,0x04,0x7C,0x44},             //   ( 40)    - 0x03C0 Greek Small Letter Pi
+ 672                  {0x70,0x28,0x24,0x24,0x18},             //   ( 41)  p - 0x03C1 Greek Small Letter Rho
+ 673                  {0x0C,0x12,0x12,0x52,0x60},             //   ( 42)    - 0x03C2 Greek Small Letter Final Sigma
+ 674                  {0x38,0x44,0x4C,0x54,0x24},             //   ( 43)    - 0x03C3 Greek Small Letter Sigma
+ 675                  {0x04,0x3C,0x44,0x20,0x00},             //   ( 44)  t - 0x03C4 Greek Small Letter Tau
+ 676                  {0x3C,0x40,0x40,0x20,0x1C},             //   ( 45)  v - 0x03C5 Greek Small Letter Upsilon
+ 677                  {0x18,0x24,0x7E,0x24,0x18},             //   ( 46)    - 0x03C6 Greek Small Letter Phi
+ 678                  {0x44,0x28,0x10,0x28,0x44},             //   ( 47)  x - 0x03C7 Greek Small Letter Chi
+ 679                  {0x0C,0x10,0x7E,0x10,0x0C},             //   ( 48)    - 0x03C8 Greek Small Letter Psi
+ 680                  {0x38,0x44,0x30,0x44,0x38},             //   ( 49)  w - 0x03C9 Greek Small Letter Omega
+ 681                  {0x0A,0x0A,0x4A,0x2A,0x1E},             //   ( 50)    - 0xFF66 Katakana Letter Wo
+ 682                  {0x04,0x44,0x34,0x14,0x0C},             //   ( 51)    - 0xFF67 Katakana Letter Small A
+ 683                  {0x20,0x10,0x78,0x04,0x00},             //   ( 52)    - 0xFF68 Katakana Letter Small I
+ 684                  {0x18,0x08,0x4C,0x48,0x38},             //   ( 53)    - 0xFF69 Katakana Letter Small U
+ 685                  {0x48,0x48,0x78,0x48,0x48},             //   ( 54)    - 0xFF6A Katakana Letter Small E
+ 686                  {0x48,0x28,0x18,0x7C,0x08},             //   ( 55)    - 0xFF6B Katakana Letter Small O
+ 687                  {0x08,0x7C,0x08,0x28,0x18},             //   ( 56)    - 0xFF6C Katakana Letter Small Ya
+ 688                  {0x40,0x48,0x48,0x78,0x40},             //   ( 57)    - 0xFF6D Katakana Letter Small Yu
+ 689                  {0x54,0x54,0x54,0x7C,0x00},             //   ( 58)    - 0xFF6E Katakana Letter Small Yo
+ 690                  {0x18,0x00,0x58,0x40,0x38},             //   ( 59)    - 0xFF6F Katakana Letter Small Tu
+ 691                  {0x08,0x08,0x08,0x08,0x08},             //   ( 60)    - 0xFF70 Katakana-Hiragana Prolonged Sound Mark
+ 692                  {0x01,0x41,0x3D,0x09,0x07},             //   ( 61)    - 0xFF71 Katakana Letter A
+ 693                  {0x10,0x08,0x7C,0x02,0x01},             //   ( 62)    - 0xFF72 Katakana Letter I
+ 694                  {0x0E,0x02,0x43,0x22,0x1E},             //   ( 63)    - 0xFF73 Katakana Letter U
+ 695                  {0x42,0x42,0x7E,0x42,0x42},             //   ( 64)    - 0xFF74 Katakana Letter E
+ 696                  {0x22,0x12,0x0A,0x7F,0x02},             //   ( 65)    - 0xFF75 Katakana Letter O
+ 697                  {0x42,0x3F,0x02,0x42,0x3E},             //   ( 66)    - 0xFF76 Katakana Letter Ka
+ 698                  {0x0A,0x0A,0x7F,0x0A,0x0A},             //   ( 67)    - 0xFF77 Katakana Letter Ki
+ 699                  {0x08,0x46,0x42,0x22,0x1E},             //   ( 68)    - 0xFF78 Katakana Letter Ku
+ 700                  {0x04,0x03,0x42,0x3E,0x02},             //   ( 69)    - 0xFF79 Katakana Letter Ke
+ 701                  {0x42,0x42,0x42,0x42,0x7E},             //   ( 70)    - 0xFF7A Katakana Letter Ko
+ 702                  {0x02,0x4F,0x22,0x1F,0x02},             //   ( 71)    - 0xFF7B Katakana Letter Sa
+ 703                  {0x4A,0x4A,0x40,0x20,0x1C},             //   ( 72)    - 0xFF7C Katakana Letter Shi
+ 704                  {0x42,0x22,0x12,0x2A,0x46},             //   ( 73)    - 0xFF7D Katakana Letter Su
+ 705                  {0x02,0x3F,0x42,0x4A,0x46},             //   ( 74)    - 0xFF7E Katakana Letter Se
+ 706                  {0x06,0x48,0x40,0x20,0x1E},             //   ( 75)    - 0xFF7F Katakana Letter So
+ 707                  {0x08,0x46,0x4A,0x32,0x1E},             //   ( 76)    - 0xFF80 Katakana Letter Ta
+ 708                  {0x0A,0x4A,0x3E,0x09,0x08},             //   ( 77)    - 0xFF81 Katakana Letter Chi
+ 709                  {0x0E,0x00,0x4E,0x20,0x1E},             //   ( 78)    - 0xFF82 Katakana Letter Tsu
+ 710                  {0x04,0x45,0x3D,0x05,0x04},             //   ( 79)    - 0xFF83 Katakana Letter Te
+ 711                  {0x00,0x7F,0x08,0x10,0x00},             //   ( 80)    - 0xFF84 Katakana Letter To
+ 712                  {0x44,0x24,0x1F,0x04,0x04},             //   ( 81)    - 0xFF85 Katakana Letter Na
+ 713                  {0x40,0x42,0x42,0x42,0x40},             //   ( 82)    - 0xFF86 Katakana Letter Ni
+ 714                  {0x42,0x2A,0x12,0x2A,0x06},             //   ( 83)    - 0xFF87 Katakana Letter Nu
+ 715                  {0x22,0x12,0x7B,0x16,0x22},             //   ( 84)    - 0xFF88 Katakana Letter Ne
+ 716                  {0x00,0x40,0x20,0x1F,0x00},             //   ( 85)    - 0xFF89 Katakana Letter No
+ 717                  {0x78,0x00,0x02,0x04,0x78},             //   ( 86)    - 0xFF8A Katakana Letter Ha
+ 718                  {0x3F,0x44,0x44,0x44,0x44},             //   ( 87)    - 0xFF8B Katakana Letter Hi
+ 719                  {0x02,0x42,0x42,0x22,0x1E},             //   ( 88)    - 0xFF8C Katakana Letter Fu
+ 720                  {0x04,0x02,0x04,0x08,0x30},             //   ( 89)    - 0xFF8D Katakana Letter He
+ 721                  {0x32,0x02,0x7F,0x02,0x32},             //   ( 90)    - 0xFF8E Katakana Letter Ho
+ 722                  {0x02,0x12,0x22,0x52,0x0E},             //   ( 91)    - 0xFF8F Katakana Letter Ma
+ 723                  {0x00,0x2A,0x2A,0x2A,0x40},             //   ( 92)    - 0xFF90 Katakana Letter Mi
+ 724                  {0x38,0x24,0x22,0x20,0x70},             //   ( 93)    - 0xFF91 Katakana Letter Mu
+ 725                  {0x40,0x28,0x10,0x28,0x06},             //   ( 94)    - 0xFF92 Katakana Letter Me
+ 726                  {0x0A,0x3E,0x4A,0x4A,0x4A},             //   ( 95)    - 0xFF93 Katakana Letter Mo
+ 727                  {0x04,0x7F,0x04,0x14,0x0C},             //   ( 96)    - 0xFF94 Katakana Letter Ya
+ 728                  {0x40,0x42,0x42,0x7E,0x40},             //   ( 97)    - 0xFF95 Katakana Letter Yu
+ 729                  {0x4A,0x4A,0x4A,0x4A,0x7E},             //   ( 98)    - 0xFF96 Katakana Letter Yo
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 13  
+
+ 730                  {0x04,0x05,0x45,0x25,0x1C},             //   ( 99)    - 0xFF97 Katakana Letter Ra
+ 731                  {0x0F,0x40,0x20,0x1F,0x00},             //   (100)    - 0xFF98 Katakana Letter Ri
+ 732                  {0x7C,0x00,0x7E,0x40,0x30},             //   (101)    - 0xFF99 Katakana Letter Ru
+ 733                  {0x7E,0x40,0x20,0x10,0x08},             //   (102)    - 0xFF9A Katakana Letter Re
+ 734                  {0x7E,0x42,0x42,0x42,0x7E},             //   (103)    - 0xFF9B Katakana Letter Ro
+ 735                  {0x0E,0x02,0x42,0x22,0x1E},             //   (104)    - 0xFF9C Katakana Letter Wa
+ 736                  {0x42,0x42,0x40,0x20,0x18},             //   (105)    - 0xFF9D Katakana Letter N
+ 737                  {0x02,0x04,0x01,0x02,0x00},             //   (106)    - 0xFF9E Katakana Voiced Sound Mark
+ 738                  {0x07,0x05,0x07,0x00,0x00},             //   (107)    - 0xFF9F Katakana Semi-Voiced Sound Mark
+ 739          };
+ 740          
+ 741          
+ 742          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 743          //  Show Regular Pattern (Full Screen)
+ 744          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 745          void Fill_RAM(unsigned char Data)
+ 746          {
+ 747   1      unsigned char i,j;
+ 748   1      
+ 749   1              for(i=0;i<8;i++)
+ 750   1              {
+ 751   2                      Set_Start_Page(i);
+ 752   2                      Set_Start_Column(0x00);
+ 753   2      
+ 754   2                      for(j=0;j<128;j++)
+ 755   2                      {
+ 756   3                              Write_Data(Data);
+ 757   3                      }
+ 758   2              }
+ 759   1      }
+ 760          
+ 761          
+ 762          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 763          //  Show Regular Pattern (Partial or Full Screen)
+ 764          //
+ 765          //    a: Start Page
+ 766          //    b: End Page
+ 767          //    c: Start Column
+ 768          //    d: Total Columns
+ 769          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 770          void Fill_Block(unsigned char Data, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
+ 771          {
+ 772   1      unsigned char i,j;
+ 773   1              
+ 774   1              for(i=a;i<(b+1);i++)
+ 775   1              {
+ 776   2                      Set_Start_Page(i);
+ 777   2                      Set_Start_Column(c);
+ 778   2      
+ 779   2                      for(j=0;j<d;j++)
+ 780   2                      {
+ 781   3                              Write_Data(Data);
+ 782   3                      }
+ 783   2              }
+ 784   1      }
+ 785          
+ 786          
+ 787          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 788          //  Show Checkboard (Full Screen)
+ 789          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 790          void Checkerboard()
+ 791          {
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 14  
+
+ 792   1      unsigned char i,j;
+ 793   1              
+ 794   1              for(i=0;i<8;i++)
+ 795   1              {
+ 796   2                      Set_Start_Page(i);
+ 797   2                      Set_Start_Column(0x00);
+ 798   2      
+ 799   2                      for(j=0;j<64;j++)
+ 800   2                      {
+ 801   3                              Write_Data(0x55);
+ 802   3                              Write_Data(0xaa);
+ 803   3                      }
+ 804   2              }
+ 805   1      }
+ 806          
+ 807          
+ 808          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 809          //  Show Frame (Full Screen)
+ 810          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 811          void Frame()
+ 812          {
+ 813   1      unsigned char i,j;
+ 814   1              
+ 815   1              Set_Start_Page(0x00);
+ 816   1              Set_Start_Column(XLevel);
+ 817   1      
+ 818   1              for(i=0;i<Max_Column;i++)
+ 819   1              {
+ 820   2                      Write_Data(0x01);
+ 821   2              }
+ 822   1      
+ 823   1              Set_Start_Page(0x07);
+ 824   1              Set_Start_Column(XLevel);
+ 825   1      
+ 826   1              for(i=0;i<Max_Column;i++)
+ 827   1              {
+ 828   2                      Write_Data(0x80);
+ 829   2              }
+ 830   1      
+ 831   1              for(i=0;i<8;i++)
+ 832   1              {
+ 833   2                      Set_Start_Page(i);
+ 834   2      
+ 835   2                      for(j=0;j<Max_Column;j+=(Max_Column-1))
+ 836   2                      {
+ 837   3                              Set_Start_Column(XLevel+j);
+ 838   3      
+ 839   3                              Write_Data(0xFF);
+ 840   3                      }
+ 841   2              }
+ 842   1      }
+ 843          
+ 844          
+ 845          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 846          //  Show Character (5x7)
+ 847          //
+ 848          //    a: Database
+ 849          //    b: Ascii
+ 850          //    c: Start Page
+ 851          //    d: Start Column
+ 852          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 853          void Show_Font57(unsigned char a, unsigned char b, unsigned char c, unsigned char d)
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 15  
+
+ 854          {
+ 855   1      unsigned char *Src_Pointer;
+ 856   1      unsigned char i;
+ 857   1      
+ 858   1              switch(a)
+ 859   1              {
+ 860   2                      case 1:
+ 861   2                              Src_Pointer=&Ascii_1[(b-1)][0];
+ 862   2                              break;
+ 863   2                      case 2:
+ 864   2                              Src_Pointer=&Ascii_2[(b-1)][0];
+ 865   2                              break;
+ 866   2              }
+ 867   1              Set_Start_Page(c);
+ 868   1              Set_Start_Column(d);
+ 869   1      
+ 870   1              for(i=0;i<5;i++)
+ 871   1              {
+ 872   2                      Write_Data(*Src_Pointer);
+ 873   2                      Src_Pointer++;
+ 874   2              }
+ 875   1              Write_Data(0x00);
+ 876   1      }
+ 877          
+ 878          
+ 879          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 880          //  Show String
+ 881          //
+ 882          //    a: Database
+ 883          //    b: Start Page
+ 884          //    c: Start Column
+ 885          //    * Must write "0" in the end...
+ 886          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 887          void Show_String(unsigned char a, unsigned char *Data_Pointer, unsigned char b, unsigned char c)
+ 888          {
+ 889   1      unsigned char *Src_Pointer;
+ 890   1      
+ 891   1              Src_Pointer=Data_Pointer;
+ 892   1              Show_Font57(1,96,b,c);                  // No-Break Space
+ 893   1                                                      //   Must be written first before the string start...
+ 894   1      
+ 895   1              while(1)
+ 896   1              {
+ 897   2                      Show_Font57(a,*Src_Pointer,b,c);
+ 898   2                      Src_Pointer++;
+ 899   2                      c+=6;
+ 900   2                      if(*Src_Pointer == 0) break;
+ 901   2              }
+ 902   1      }
+ 903          
+ 904          
+ 905          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 906          //  Show Pattern (Partial or Full Screen)
+ 907          //
+ 908          //    a: Start Page
+ 909          //    b: End Page
+ 910          //    c: Start Column
+ 911          //    d: Total Columns
+ 912          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 913          void Show_Pattern(unsigned char *Data_Pointer, unsigned char a, unsigned char b, unsigned char c, unsigned
+             - char d)
+ 914          {
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 16  
+
+ 915   1      unsigned char *Src_Pointer;
+ 916   1      unsigned char i,j;
+ 917   1      
+ 918   1              Src_Pointer=Data_Pointer;
+ 919   1              for(i=a;i<(b+1);i++)
+ 920   1              {
+ 921   2                      Set_Start_Page(i);
+ 922   2                      Set_Start_Column(c);
+ 923   2      
+ 924   2                      for(j=0;j<d;j++)
+ 925   2                      {
+ 926   3                              Write_Data(*Src_Pointer);
+ 927   3                              Src_Pointer++;
+ 928   3                      }
+ 929   2              }
+ 930   1      }
+ 931          
+ 932          
+ 933          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 934          //  Vertical / Fade Scrolling (Partial or Full Screen)
+ 935          //
+ 936          //    a: Scrolling Direction
+ 937          //       "0x00" (Upward)
+ 938          //       "0x01" (Downward)
+ 939          //    b: Set Top Fixed Area
+ 940          //    c: Set Vertical Scroll Area
+ 941          //    d: Set Numbers of Row Scroll per Step
+ 942          //    e: Set Time Interval between Each Scroll Step
+ 943          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 944          void Vertical_Scroll(unsigned char a, unsigned char b, unsigned char c, unsigned char d, unsigned char e)
+ 945          {
+ 946   1      unsigned int i,j;       
+ 947   1      
+ 948   1              Write_Command(0xA3);                    // Set Vertical Scroll Area
+ 949   1              Write_Command(b);                       //   Default => 0x00 (Top Fixed Area)
+ 950   1              Write_Command(c);                       //   Default => 0x40 (Vertical Scroll Area)
+ 951   1      
+ 952   1              switch(a)
+ 953   1              {
+ 954   2                      case 0:
+ 955   2                              for(i=0;i<c;i+=d)
+ 956   2                              {
+ 957   3                                      Set_Start_Line(i);
+ 958   3                                      for(j=0;j<e;j++)
+ 959   3                                      {
+ 960   4                                              uDelay(200);
+ 961   4                                      }
+ 962   3                              }
+ 963   2                              break;
+ 964   2                      case 1:
+ 965   2                              for(i=0;i<c;i+=d)
+ 966   2                              {
+ 967   3                                      Set_Start_Line(c-i);
+ 968   3                                      for(j=0;j<e;j++)
+ 969   3                                      {
+ 970   4                                              uDelay(200);
+ 971   4                                      }
+ 972   3                              }
+ 973   2                              break;
+ 974   2              }
+ 975   1              Set_Start_Line(0x00);
+ 976   1      }
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 17  
+
+ 977          
+ 978          
+ 979          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 980          //  Continuous Horizontal Scrolling (Partial or Full Screen)
+ 981          //
+ 982          //    a: Scrolling Direction
+ 983          //       "0x00" (Rightward)
+ 984          //       "0x01" (Leftward)
+ 985          //    b: Define Start Page Address
+ 986          //    c: Define End Page Address
+ 987          //    d: Set Time Interval between Each Scroll Step in Terms of Frame Frequency
+ 988          //    e: Delay Time
+ 989          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ 990          void Horizontal_Scroll(unsigned char a, unsigned char b, unsigned char c, unsigned char d, unsigned char e
+             -)
+ 991          {
+ 992   1              Write_Command(0x26|a);                  // Horizontal Scroll Setup
+ 993   1              Write_Command(0x00);                    //           => (Dummy Write for First Parameter)
+ 994   1              Write_Command(b);
+ 995   1              Write_Command(d);
+ 996   1              Write_Command(c);
+ 997   1              Write_Command(0x2F);                    // Activate Scrolling
+ 998   1              Delay(e);
+ 999   1      }
+1000          
+1001          
+1002          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1003          //  Continuous Vertical / Horizontal / Diagonal Scrolling (Partial or Full Screen)
+1004          //
+1005          //    a: Scrolling Direction
+1006          //       "0x00" (Vertical & Rightward)
+1007          //       "0x01" (Vertical & Leftward)
+1008          //    b: Define Start Row Address (Horizontal / Diagonal Scrolling)
+1009          //    c: Define End Page Address (Horizontal / Diagonal Scrolling)
+1010          //    d: Set Top Fixed Area (Vertical Scrolling)
+1011          //    e: Set Vertical Scroll Area (Vertical Scrolling)
+1012          //    f: Set Numbers of Row Scroll per Step (Vertical / Diagonal Scrolling)
+1013          //    g: Set Time Interval between Each Scroll Step in Terms of Frame Frequency
+1014          //    h: Delay Time
+1015          //    * d+e must be less than or equal to the Multiplex Ratio...
+1016          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1017          void Continuous_Scroll(unsigned char a, unsigned char b, unsigned char c, unsigned char d, unsigned char e
+             -, unsigned char f, unsigned char g, unsigned char h)
+1018          {
+1019   1              Write_Command(0xA3);                    // Set Vertical Scroll Area
+1020   1              Write_Command(d);                       //   Default => 0x00 (Top Fixed Area)
+1021   1              Write_Command(e);                       //   Default => 0x40 (Vertical Scroll Area)
+1022   1      
+1023   1              Write_Command(0x29+a);                  // Continuous Vertical & Horizontal Scroll Setup
+1024   1              Write_Command(0x00);                    //           => (Dummy Write for First Parameter)
+1025   1              Write_Command(b);
+1026   1              Write_Command(g);
+1027   1              Write_Command(c);
+1028   1              Write_Command(f);
+1029   1              Write_Command(0x2F);                    // Activate Scrolling
+1030   1              Delay(h);
+1031   1      }
+1032          
+1033          
+1034          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1035          //  Deactivate Scrolling (Full Screen)
+1036          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 18  
+
+1037          void Deactivate_Scroll()
+1038          {
+1039   1              Write_Command(0x2E);                    // Deactivate Scrolling
+1040   1      }
+1041          
+1042          
+1043          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1044          //  Fade In (Full Screen)
+1045          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1046          void Fade_In()
+1047          {
+1048   1      unsigned int i; 
+1049   1      
+1050   1              Set_Display_On_Off(0x01);
+1051   1              for(i=0;i<(Brightness+1);i++)
+1052   1              {
+1053   2                      Set_Contrast_Control(i);
+1054   2                      uDelay(200);
+1055   2                      uDelay(200);
+1056   2                      uDelay(200);
+1057   2              }
+1058   1      }
+1059          
+1060          
+1061          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1062          //  Fade Out (Full Screen)
+1063          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1064          void Fade_Out()
+1065          {
+1066   1      unsigned int i; 
+1067   1      
+1068   1              for(i=(Brightness+1);i>0;i--)
+1069   1              {
+1070   2                      Set_Contrast_Control(i-1);
+1071   2                      uDelay(200);
+1072   2                      uDelay(200);
+1073   2                      uDelay(200);
+1074   2              }
+1075   1              Set_Display_On_Off(0x00);
+1076   1      }
+1077          
+1078          
+1079          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1080          //  Sleep Mode
+1081          //
+1082          //    "0x00" Enter Sleep Mode
+1083          //    "0x01" Exit Sleep Mode
+1084          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1085          void Sleep(unsigned char a)
+1086          {
+1087   1              switch(a)
+1088   1              {
+1089   2                      case 0:
+1090   2                              Set_Display_On_Off(0x00);
+1091   2                              Set_Entire_Display(0x01);
+1092   2                              break;
+1093   2                      case 1:
+1094   2                              Set_Entire_Display(0x00);
+1095   2                              Set_Display_On_Off(0x01);
+1096   2                              break;
+1097   2              }
+1098   1      }
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 19  
+
+1099          
+1100          
+1101          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1102          //  Connection Test
+1103          //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1104          void Test()
+1105          {
+1106   1      unsigned char i;
+1107   1      
+1108   1              RES=0;
+1109   1              for(i=0;i<200;i++)
+1110   1              {
+1111   2                      uDelay(200);
+1112   2              }
+1113   1              RES=1;
+1114   1      
+1115   1              Set_Entire_Display(0x01);               // Enable Entire Display On (0x00/0x01)
+1116   1      
+1117   1              while(1)
+1118   1              {
+1119   2                      Set_Display_On_Off(0x01);       // Display On (0x00/0x01)
+1120   2                      Delay(2);
+1121   2                      Set_Display_On_Off(0x00);       // Display Off (0x00/0x01)
+1122   2                      Delay(2);
+1123   2              }
+1124   1      }
+1125          
+1126          
+1127          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1128          //  Initialization
+1129          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1130          void OLED_Init_E()                              // VCC Supplied Externally
+1131          {
+1132   1      unsigned char i;
+1133   1      
+1134   1              RES=0;
+1135   1              for(i=0;i<200;i++)
+1136   1              {
+1137   2                      uDelay(200);
+1138   2              }
+1139   1              RES=1;
+1140   1      
+1141   1              Set_Display_On_Off(0x00);               // Display Off (0x00/0x01)
+1142   1              Set_Display_Clock(0x80);                // Set Clock as 100 Frames/Sec
+1143   1              Set_Multiplex_Ratio(0x3F);              // 1/64 Duty (0x0F~0x3F)
+1144   1              Set_Display_Offset(0x00);               // Shift Mapping RAM Counter (0x00~0x3F)
+1145   1              Set_Start_Line(0x00);                   // Set Mapping RAM Display Start Line (0x00~0x3F)
+1146   1              Set_Charge_Pump(0x00);                  // Disable Embedded DC/DC Converter (0x00/0x04)
+1147   1              Set_Addressing_Mode(0x02);              // Set Page Addressing Mode (0x00/0x01/0x02)
+1148   1              Set_Segment_Remap(0x01);                // Set SEG/Column Mapping (0x00/0x01)
+1149   1              Set_Common_Remap(0x08);                 // Set COM/Row Scan Direction (0x00/0x08)
+1150   1              Set_Common_Config(0x10);                // Set Sequential Configuration (0x00/0x10)
+1151   1              Set_Contrast_Control(Brightness);       // Set SEG Output Current
+1152   1              Set_Precharge_Period(0x22);             // Set Pre-Charge as 2 Clocks & Discharge as 2 Clock
+1153   1              Set_VCOMH(0x40);                        // Set VCOM Deselect Level
+1154   1              Set_Entire_Display(0x00);               // Disable Entire Display On (0x00/0x01)
+1155   1              Set_Inverse_Display(0x00);              // Disable Inverse Display On (0x00/0x01)
+1156   1      
+1157   1              Fill_RAM(0x00);                         // Clear Screen
+1158   1      
+1159   1              Set_Display_On_Off(0x01);               // Display On (0x00/0x01)
+1160   1      }
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 20  
+
+1161          
+1162          
+1163          void OLED_Init_I()                              // VCC Generated by Internal DC/DC Circuit
+1164          {
+1165   1      unsigned char i;
+1166   1      
+1167   1              RES=0;
+1168   1              for(i=0;i<200;i++)
+1169   1              {
+1170   2                      uDelay(200);
+1171   2                      uDelay(200);
+1172   2              }
+1173   1              RES=1;
+1174   1      
+1175   1              Set_Display_On_Off(0x00);               // Display Off (0x00/0x01)
+1176   1              Set_Display_Clock(0x80);                // Set Clock as 100 Frames/Sec
+1177   1              Set_Multiplex_Ratio(0x3F);              // 1/64 Duty (0x0F~0x3F)
+1178   1              Set_Display_Offset(0x00);               // Shift Mapping RAM Counter (0x00~0x3F)
+1179   1              Set_Start_Line(0x00);                   // Set Mapping RAM Display Start Line (0x00~0x3F)
+1180   1              Set_Charge_Pump(0x04);                  // Enable Embedded DC/DC Converter (0x00/0x04)
+1181   1              Set_Addressing_Mode(0x02);              // Set Page Addressing Mode (0x00/0x01/0x02)
+1182   1              Set_Segment_Remap(0x01);                // Set SEG/Column Mapping (0x00/0x01)
+1183   1              Set_Common_Remap(0x08);                 // Set COM/Row Scan Direction (0x00/0x08)
+1184   1              Set_Common_Config(0x10);                // Set Sequential Configuration (0x00/0x10)
+1185   1              Set_Contrast_Control(Brightness);       // Set SEG Output Current
+1186   1              Set_Precharge_Period(0xF1);             // Set Pre-Charge as 15 Clocks & Discharge as 1 Clock
+1187   1              Set_VCOMH(0x40);                        // Set VCOM Deselect Level
+1188   1              Set_Entire_Display(0x00);               // Disable Entire Display On (0x00/0x01)
+1189   1              Set_Inverse_Display(0x00);              // Disable Inverse Display On (0x00/0x01)
+1190   1      
+1191   1              Fill_RAM(0x00);                         // Clear Screen
+1192   1      
+1193   1              Set_Display_On_Off(0x01);               // Display On (0x00/0x01)
+1194   1      }
+1195          
+1196          
+1197          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1198          //  Main Program
+1199          //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+1200          void main()
+1201          {
+1202   1      unsigned char code Name[]={43,69,45,69,73,36,73,65,78,58,73,0};
+1203   1                                                      // kemeidianzi
+1204   1      unsigned char code Tel[]={17,21,25,21,19,24,22,21,18,25,19,0};
+1205   1                                                      // +886-37-586586
+1206   1      unsigned char i;
+1207   1              P0=0X00;
+1208   1              P1=0xFF;
+1209   1              P3=0xFF;
+1210   1              OLED_Init_I();
+1211   1              //OLED_Init_E();
+1212   1              while(1)
+1213   1              {
+1214   2              // Show Pattern - UniV OLED
+1215   2                      Show_Pattern(&UniV[0][0],0x02,0x05,XLevel+0x28,0x30);
+1216   2                      Delay(1);
+1217   2      
+1218   2              // Fade In/Out (Full Screen)
+1219   2                      Fade_Out();
+1220   2                      Fade_In();
+1221   2                      Fade_Out();
+1222   2                      Fade_In();
+C51 COMPILER V8.12   286446P                                                               04/10/2010 12:49:03 PAGE 21  
+
+1223   2                      Delay(1);
+1224   2      
+1225   2              // Scrolling (Partial or Full Screen)
+1226   2                      Vertical_Scroll(0x00,0x00,Max_Row,0x01,0x20);
+1227   2                                                      // Upward
+1228   2                      Delay(1);
+1229   2                      Vertical_Scroll(0x01,0x00,Max_Row,0x01,0x20);
+1230   2                                                      // Downward
+1231   2                      Delay(1);
+1232   2                      Deactivate_Scroll();
+1233   2                      Continuous_Scroll(0x00,0x00,0x00,0x00,0x20,0x01,0x00,0x01);
+1234   2                                                      // Upward - Top Area
+1235   2                      Continuous_Scroll(0x00,0x00,0x00,0x00,0x20,0x1F,0x00,0x01);
+1236   2                                                      // Downward - Top Area
+1237   2                      Continuous_Scroll(0x00,0x00,0x03,0x00,0x20,0x01,0x00,0x02);
+1238   2                                                      // Up & Rightward - Top Area
+1239   2                      Continuous_Scroll(0x01,0x00,0x03,0x00,0x20,0x1F,0x00,0x02);
+1240   2                                                      // Down & Leftward - Top Area
+1241   2                      Continuous_Scroll(0x01,0x04,0x07,0x00,0x20,0x01,0x00,0x02);
+1242   2                                                      // Upward - Top Area
+1243   2                                                      // Leftward - Bottom Area
+1244   2                      Continuous_Scroll(0x00,0x04,0x07,0x00,0x20,0x1F,0x00,0x02);
+1245   2                                                      // Downward - Top Area
+1246   2                                                      // Rightward - Bottom Area
+1247   2                      Deactivate_Scroll();
+1248   2      
+1249   2              // All Pixels On (Test Pattern)
+1250   2                      Fill_RAM(0xFF);
+1251   2                      Delay(1);
+1252   2      
+1253   2              // Checkerboard (Test Pattern)
+1254   2                      Checkerboard();
+1255   2                      Delay(1);
+1256   2                      Fill_RAM(0x00);                 // Clear Screen
+1257   2      
+1258   2              // Frame (Test Pattern)
+1259   2                      Frame();
+1260   2                      Delay(1);
+1261   2      
+1262   2              // Show String - Univision +886-37-586586
+1263   2                      Show_String(1,&Name,0x03,XLevel+0x25);
+1264   2                      Show_String(1,&Tel,0x04,XLevel+0x16);
+1265   2                      Delay(1);
+1266   2                      Fill_RAM(0x00);                 // Clear Screen
+1267   2              }
+1268   1      }
+*** WARNING C280 IN LINE 1206 OF 286446P.C: 'i': unreferenced local variable
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1497    ----
+   CONSTANT SIZE    =   1951    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      50
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
