@@ -1,0 +1,118 @@
+C51 COMPILER V7.10   LQ12864MAIN                                                           09/17/2011 23:55:10 PAGE 1   
+
+
+C51 COMPILER V7.10, COMPILATION OF MODULE LQ12864MAIN
+OBJECT MODULE PLACED IN LQ12864main.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE LQ12864main.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /********************************************
+   2          龙丘OLED屏测试程序-STC&89C52 
+   3          Designed by Chiu Sir
+   4          E-mail:chiusir@yahoo.cn
+   5          软件版本:V1.1
+   6          最后更新:2011年9月3日
+   7          相关信息参考下列地址：
+   8          网站：  http://www.lqist.cn
+   9          淘宝店：http://shop36265907.taobao.com
+  10          ------------------------------------     
+  11           
+  12          使用说明：
+  13          OLED电源使用3.3V。   
+  14          ----------------
+  15          G    电源地
+  16          3.3V 接3.3V电源
+  17          D0   P1.0  
+  18          D1       P1.1
+  19          RST  P1.2 
+  20          DC   P1.3
+  21          CS   已接地，不用接
+  22          ============================================
+  23          OLED电源使用5V。   
+  24          ----------------
+  25          G    电源地
+  26          3.3V 接5V电源，电源跟模块之间串接100欧姆电阻，并加3.3V钳位二极管
+  27          D0   P1.0 单片机跟模块之间串接2k-3.3k电阻 
+  28          D1       P1.1 单片机跟模块之间串接2k-3.3k电阻 
+  29          RST  P1.2 单片机跟模块之间串接2k-3.3k电阻 
+  30          DC   P1.3 单片机跟模块之间串接2k-3.3k电阻 
+  31          CS   已接地，不用接     
+  32          ============================================     
+  33          如果用户使用的是5V单片机，请看用户手册，切勿烧毁模块！  
+  34          ============================================*/  
+  35          #include <stdio.h>
+  36          #include <string.h>    
+  37          #include "LQ12864.h"   
+  38          
+  39          void delay(int ms)
+  40          {
+  41   1         int ii,jj;
+  42   1         if (ms<1) ms=1;
+  43   1         for(ii=0;ii<ms;ii++)
+  44   1           for(jj=0;jj<500;jj++);  
+  45   1             
+  46   1      } 
+  47          //============================MAIN()===========================
+  48          /*********************主函数************************************/
+  49          void main(void) 
+  50          {
+  51   1        unsigned char i=0;    
+  52   1          
+  53   1        LCD_Init();   
+  54   1        for(;;) 
+  55   1        {
+C51 COMPILER V7.10   LQ12864MAIN                                                           09/17/2011 23:55:10 PAGE 2   
+
+  56   2            LCD_Fill(0xff); 
+  57   2            delay(1000); 
+  58   2            LCD_Fill(0x00);
+  59   2            delay(1000);      
+  60   2            LCD_P14x16Ch(36,0,0); //龙
+  61   2                LCD_P14x16Ch(50,0,1); //丘
+  62   2                LCD_P14x16Ch(64,0,2); //智
+  63   2                LCD_P14x16Ch(78,0,3); //能     
+  64   2            LCD_P8x16Str(48,4,"OLED");
+  65   2            LCD_P6x8Str(16,6,"chiusir@yahoo.cn"); 
+  66   2            LCD_P6x8Str(34,7,"2011-09-03");    
+  67   2            delay(2000);       
+  68   2            LCD_CLS();
+  69   2            
+  70   2            delay(2000);
+  71   2              
+  72   2           /*
+  73   2           for(i=0;i<32;i+=2)
+  74   2           {
+  75   2              LCD_CLS();
+  76   2              Draw_BMP(i,0,i+96,7,longqiu96x64);
+  77   2              delay(300);        
+  78   2              LED4=~ LED4;
+  79   2           }
+  80   2           for(i=32;i>1;i-=2)
+  81   2           {
+  82   2              LCD_CLS();
+  83   2              Draw_BMP(i,0,i+96,7,longqiu96x64);
+  84   2              delay(300);
+  85   2              LED1=~ LED1;
+  86   2           }
+  87   2           */            
+  88   2        }
+  89   1        /* please make sure that you never leave main */
+  90   1      }
+  91          
+  92          //
+*** WARNING C316 IN LINE 92 OF LQ12864main.c: unterminated conditionals
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    176    ----
+   CONSTANT SIZE    =     33    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
