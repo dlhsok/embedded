@@ -216,8 +216,8 @@ void WriteRawRC(unsigned char Address,unsigned char value)                   ;
 unsigned char ReadRawRC(unsigned char Address)                               ; 
 void SetBitMask(unsigned char reg,unsigned char mask)                        ; 
 void ClearBitMask(unsigned char reg,unsigned char mask)                      ; 
-char Read_Block(unsigned char Block,unsigned char *Buf)                      ;
-char Write_Block(unsigned char Block)                                        ;
+//char Read_Block(unsigned char Block,unsigned char *Buf)                      ;
+//char Write_Block(unsigned char Block)                                        ;
 void PcdAntennaTestOn(void)                                                  ;
 
 extern char KK[8]                                                            ; // 数据加密密钥
@@ -783,23 +783,23 @@ char PcdRead(unsigned char addr,unsigned char *pData)
 //          pData[OUT]：读出的数据，16字节
 //返    回: 成功返回MI_OK
 //******************************************************************/
-char Read_Block(unsigned char Block,unsigned char *Buf)
-{
-  char result                                             ;
-  result = PcdAuthState(0x60,Block,Password_Buffer,UID)   ;
-  if(result!=MI_OK)
-    return result                                         ;
-  result = PcdRead(Block,Buf)                             ;
-//  return result; // 2011.01.03
-  
-  if(result!=MI_OK)     return   result                   ;
-  if(Block!=0x00&&des_on)
-  {
-    Des_Decrypt((char *)Buf    ,KK,(char *)Buf    )       ;
-    Des_Decrypt((char *)&Buf[8],KK,(char *)&Buf[8])       ;  
-  }
-  return SUCCESS                                          ; 
-}
+//char Read_Block(unsigned char Block,unsigned char *Buf)
+//{
+//  char result                                             ;
+//  result = PcdAuthState(0x60,Block,Password_Buffer,UID)   ;
+//  if(result!=MI_OK)
+//    return result                                         ;
+//  result = PcdRead(Block,Buf)                             ;
+////  return result; // 2011.01.03
+//  
+//  if(result!=MI_OK)     return   result                   ;
+//  if(Block!=0x00&&des_on)
+//  {
+//    Des_Decrypt((char *)Buf    ,KK,(char *)Buf    )       ;
+//    Des_Decrypt((char *)&Buf[8],KK,(char *)&Buf[8])       ;  
+//  }
+//  return SUCCESS                                          ; 
+//}
 
 //******************************************************************/
 //功    能：写数据到M1卡一块
@@ -841,22 +841,22 @@ char PcdWrite(unsigned char addr,unsigned char *pData)
 //返    回: 成功返回MI_OK
 //******************************************************************/
 
-char Write_Block(unsigned char Block)
-{
-  char result                                             ;
-  if(des_on)
-  {
-    Des_Encrypt((char *)RF_Buffer    ,KK,
-                (char *)RF_Buffer        )                ;// for debug
-    Des_Encrypt((char *)&RF_Buffer[8],KK,
-                (char *)&RF_Buffer[8]    )                ;// for debug  
-  }
-  result = PcdAuthState(0x60,Block,Password_Buffer,UID)   ;
-  if(result!=MI_OK)
-    return result                                         ;  
-  result = PcdWrite(Block,RF_Buffer)                      ;
-  return result                                           ;  
-}
+//char Write_Block(unsigned char Block)
+//{
+//  char result                                             ;
+//  if(des_on)
+//  {
+//    Des_Encrypt((char *)RF_Buffer    ,KK,
+//                (char *)RF_Buffer        )                ;// for debug
+//    Des_Encrypt((char *)&RF_Buffer[8],KK,
+//                (char *)&RF_Buffer[8]    )                ;// for debug  
+//  }
+//  result = PcdAuthState(0x60,Block,Password_Buffer,UID)   ;
+//  if(result!=MI_OK)
+//    return result                                         ;  
+//  result = PcdWrite(Block,RF_Buffer)                      ;
+//  return result                                           ;  
+//}
 
 //******************************************************************/
 //功    能：扣款和充值

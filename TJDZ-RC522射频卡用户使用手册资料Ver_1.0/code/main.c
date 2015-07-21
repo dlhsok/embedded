@@ -18,6 +18,13 @@ unsigned char RF_Buffer[18]                                        ;
 unsigned char Password_Buffer[6]={0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}   ; // Mifare One ????
 unsigned char des_on       = 0                                     ; // DES????
 
+extern void PutString(uchar *ptr);
+extern void DisplayConfigMenu(void);
+extern void PutString0(uchar *ptr);
+extern void tochar(uchar id);
+extern uchar Get1Char(void);
+extern void Send1Char(uchar sendchar);
+
 void Delay(unsigned int time)
 {
   unsigned int i,k                             ;
@@ -50,7 +57,7 @@ void Auto_Reader(void)
         tochar(UID[1]);
         tochar(UID[2]);
         tochar(UID[3]);
-        PutString0('\n');                              //发送换行指令
+        PutString0("\n");                              //发送换行指令
                         
         RED_LED_ON                                            ;
         Delay(200)                                           ;
@@ -97,6 +104,7 @@ void Init_Port(void)
 	GPIO_SetDir(RF_DATA_IN.Portnum, RF_DATA_IN.Pinnum, GPIO_DIR_INPUT);
 
 }
+
 /*******************************************
 函数名称：HandleConfigMenu
 功    能：处理PC的配置函数
