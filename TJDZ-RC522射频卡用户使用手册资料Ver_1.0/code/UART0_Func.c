@@ -4,15 +4,22 @@
 	
 extern ARM_DRIVER_USART Driver_USART0;
 static ARM_DRIVER_USART * USART0drv=&Driver_USART0;
+extern unsigned char u0sent;
 
 void myUSART0_callback(uint32_t event)
 {
 	switch (event)
 	{
 		case ARM_USART_EVENT_RECEIVE_COMPLETE:
+			break;
 		case ARM_USART_EVENT_TRANSFER_COMPLETE:
+			u0sent = 0;
+			break;
 		case ARM_USART_EVENT_SEND_COMPLETE:
+			u0sent = 0;
+			break;
 		case ARM_USART_EVENT_TX_COMPLETE:
+			u0sent = 0;
 		/* Success: Wakeup Thread */
 		break;
 		case ARM_USART_EVENT_RX_TIMEOUT:
@@ -62,7 +69,8 @@ void Send1Char(uchar sendchar)
 {
 //      while (!(IFG1 & UTXIFG0));    //等待发送寄存器为空         
 //      TXBUF0 = sendchar; 
-   USART0drv->Send(&sendchar, 1);
+  USART0drv->Send(&sendchar, 1);
+	while(USART0drv->GetStatus().tx_busy);
 }
 /*******************************************
 函数名称：Get1Char
@@ -75,6 +83,7 @@ uchar Get1Char(void)
 //    while (!(IFG1 & URXIFG0));    //等待接收到字符        
 //    return  RXBUF0;
 	uchar data;
+	while(USART0drv->GetRxCount()==0);
 	USART0drv->Receive(&data,1);
 	return data;
 }

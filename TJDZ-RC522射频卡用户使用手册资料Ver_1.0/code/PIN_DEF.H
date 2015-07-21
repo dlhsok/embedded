@@ -35,8 +35,8 @@ extern const PIN RF_DATA_OUT;
 extern const PIN RF_DATA_IN;
 
 
-//#define    RF_SLEEP                P2OUT &=~RF_LPCTL                     // 射频模块唤醒
-//#define    RF_WAKEUP               P2OUT |= RF_LPCTL                     // 射频模块休眠
+#define    RF_SLEEP                GPIO_PinWrite(RF_LPCTL.Portnum, RF_LPCTL.Pinnum, 0)                     // 射频模块唤醒
+#define    RF_WAKEUP               GPIO_PinWrite(RF_LPCTL.Portnum, RF_LPCTL.Pinnum, 1)                     // 射频模块休眠
 #define    SCLK_HIGH               GPIO_PinWrite(RF_SCLK.Portnum, RF_SCLK.Pinnum, 1)                      // 数据时钟置高
 #define    SCLK_LOW                GPIO_PinWrite(RF_SCLK.Portnum, RF_SCLK.Pinnum, 0)                      // 数据时钟置低
 #define    DATA_OUT_HIGH           GPIO_PinWrite(RF_DATA_OUT.Portnum, RF_DATA_OUT.Pinnum, 1)              // 数据置高
@@ -52,8 +52,8 @@ extern const PIN RF_DATA_IN;
 #define    SI522_1                 DATA_OUT_HIGH                  // 数据置高        
 #define    SI522_0                 DATA_OUT_LOW                  // 数据置低        
 #define    SO522                   DATA_IN              // 数据输入
-#define    RST522_1                SCLK_HIGH
-#define    RST522_0                SCLK_LOW
+#define    RST522_1                RF_WAKEUP
+#define    RST522_0                RF_SLEEP
 
 
 //------------------------------ 操作结果  ---------------------------------------//

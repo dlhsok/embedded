@@ -14,8 +14,6 @@
         <TargetCommonOption>
           <Device>LPC1756</Device>
           <Vendor>NXP</Vendor>
-          <PackID>Keil.LPC1700_DFP.2.0.0</PackID>
-          <PackURL>http://www.keil.com/pack/</PackURL>
           <Cpu>IROM(0x00000000,0x40000) IRAM(0x10000000,0x4000) IRAM2(0x2007C000,0x4000) CPUTYPE("Cortex-M3") CLOCK(12000000) ELITTLE</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
           <StartupFile></StartupFile>
@@ -418,11 +416,6 @@
               <FileName>UART0_Func.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\UART0_Func.c</FilePath>
-            </File>
-            <File>
-              <FileName>system_LPC17xx.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\RTE\Device\LPC1756\system_LPC17xx.c</FilePath>
             </File>
           </Files>
         </Group>

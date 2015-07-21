@@ -7,16 +7,18 @@
 #include "ctype.h" 
 #include "BoardConfig.h"
 
-const PIN RF_LPCTL = {2,2};				// P2.3 射频卡休眠控制 ------RST  
-const PIN RF_SS	 = {2,2};												// p2.7 射频卡从机选择(SS)---SDA
+const PIN RF_LPCTL = {2,0};				// P2.3 射频卡休眠控制 ------RST  
+const PIN RF_SS	 = {2,1};												// p2.7 射频卡从机选择(SS)---SDA
 const PIN RF_SCLK  = {2,2};                 // p2.6 射频卡数据时钟输出(SCLK)
-const PIN RF_DATA_OUT  = {2,2};             // p2.5 射频卡数据输出(MOSI)
-const PIN RF_DATA_IN  = {2,2};              // p2.1 射频模块输入(MISO) 
+const PIN RF_DATA_OUT  = {2,3};             // p2.5 射频卡数据输出(MOSI)
+const PIN RF_DATA_IN  = {2,7};              // p2.1 射频模块输入(MISO) 
 
 unsigned char UID[5],Temp[4]                                       ;
 unsigned char RF_Buffer[18]                                        ;
 unsigned char Password_Buffer[6]={0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}   ; // Mifare One ????
 unsigned char des_on       = 0                                     ; // DES????
+
+unsigned char u0sent = 1;
 
 extern void PutString(uchar *ptr);
 extern void DisplayConfigMenu(void);
@@ -24,6 +26,7 @@ extern void PutString0(uchar *ptr);
 extern void tochar(uchar id);
 extern uchar Get1Char(void);
 extern void Send1Char(uchar sendchar);
+extern void InitUART(void);
 
 void Delay(unsigned int time)
 {
@@ -129,6 +132,8 @@ void HandleConfigMenu(uchar inputvalue)
 int main()
 {
 	uchar i;
+	Init_Port();
+  InitUART();
   PcdReset();//复位RC522
   PcdAntennaOn();//开启天线发射 
   DisplayConfigMenu();
