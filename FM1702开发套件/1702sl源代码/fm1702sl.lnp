@@ -1,0 +1,6 @@
+"STARTUP.obj",
+"ISO14443A.obj",
+"MAIN.obj",
+"SlRc1702.obj" 
+TO "fm1702sl" 
+RAMSIZE(256) 

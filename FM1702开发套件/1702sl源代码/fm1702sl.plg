@@ -1,0 +1,23 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Project:</h2>
+F:\网店开发板资料\FM1702开发套件\1702sl源代码\fm1702sl.uvproj
+Project File Date:  08/19/2012
+
+<h2>Output:</h2>
+Build target 'Target 1'
+assembling STARTUP.A51...
+compiling ISO14443A.C...
+ISO14443A.H(29): warning C258: 'auth_mode': mspace on parameter ignored
+ISO14443A.H(29): warning C258: 'keynr': mspace on parameter ignored
+ISO14443A.C(249): warning C258: 'auth_mode': mspace on parameter ignored
+ISO14443A.C(249): warning C258: 'keynr': mspace on parameter ignored
+compiling MAIN.C...
+ISO14443A.H(29): warning C258: 'auth_mode': mspace on parameter ignored
+ISO14443A.H(29): warning C258: 'keynr': mspace on parameter ignored
+compiling SlRc1702.C...
+linking...
+creating hex file from "fm1702sl"...
+"fm1702sl" - 0 Error(s), 6 Warning(s).

@@ -1,0 +1,622 @@
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 1   
+
+
+C51 COMPILER V6.12, COMPILATION OF MODULE ISO14443A
+OBJECT MODULE PLACED IN ISO14443A.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE ISO14443A.C ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+stmt level    source
+
+   1          #include "reg52.h"
+   2          #include "string.h"
+   3          #include "main.h"
+   4          #include "slrc1702.h" 
+   5          #include "iso14443a.h"
+*** WARNING C258 IN LINE 29 OF ISO14443A.H: 'auth_mode': mspace on parameter ignored
+*** WARNING C258 IN LINE 29 OF ISO14443A.H: 'keynr': mspace on parameter ignored
+   6          #define FSD 64              //fm1702sl FIFO BUFFER SIZE
+   7          extern struct TranSciveBuffer{unsigned char MfCommand;
+   8                                        unsigned int  MfLength;
+   9                                        unsigned char MfData[64];
+  10                                       };
+  11                                        
+  12          /////////////////////////////////////////////////////////////////////
+  13          //功    能：寻卡
+  14          //参数说明: req_code[IN]:寻卡方式
+  15          //                0x52 = 寻感应区内所有符合14443A标准的卡
+  16          //                0x26 = 寻未进入休眠状态的卡
+  17          //         pTagType[OUT]：卡片类型代码
+  18          //                0x04 = Mifare_One(S50)
+  19          //                0x02 = Mifare_One(S70)
+  20          //                0x08 = Mifare_Pro
+  21          //返    回: 成功返回MI_OK
+  22          /////////////////////////////////////////////////////////////////////
+  23          char PcdRequest(unsigned char req_code,unsigned char *pTagType)
+  24          {
+  25   1         char status;   
+  26   1         struct TranSciveBuffer MfComData;
+  27   1         struct TranSciveBuffer *pi;
+  28   1         pi = &MfComData;
+  29   1      
+  30   1         WriteRawRC(RegChannelRedundancy,0x03);
+  31   1         ClearBitMask(RegControl,0x08);
+  32   1         WriteRawRC(RegBitFraming,0x07);
+  33   1         SetBitMask(RegTxControl,0x03);
+  34   1         PcdSetTmo(4);
+  35   1         MfComData.MfCommand = PCD_TRANSCEIVE;
+  36   1         MfComData.MfLength  = 1;
+  37   1         MfComData.MfData[0] = req_code;
+  38   1      
+  39   1         status = PcdComTransceive(pi);
+  40   1         
+  41   1         if (!status)
+  42   1         {    
+  43   2              if (MfComData.MfLength != 0x10)
+  44   2              {   status = MI_BITCOUNTERR;   }
+  45   2         }
+  46   1         *pTagType     = MfComData.MfData[0];
+  47   1         *(pTagType+1) = MfComData.MfData[1];
+  48   1         
+  49   1         return status;
+  50   1      }
+  51          
+  52          /////////////////////////////////////////////////////////////////////
+  53          //防冲撞
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 2   
+
+  54          //input: g_cSNR=存放序列号(4byte)的内存单元首地址
+  55          //output:status=MI_OK:成功
+  56          //       得到的序列号放入指定单元
+  57          /////////////////////////////////////////////////////////////////////
+  58          char PcdAnticoll(unsigned char *pSnr)
+  59          {
+  60   1          char status ;
+  61   1          unsigned char i;
+  62   1          unsigned char ucBits;
+  63   1          unsigned char ucBytes;
+  64   1          unsigned char snr_check = 0;
+  65   1          unsigned char ucCollPosition = 0;
+  66   1          unsigned char ucTemp;
+  67   1          unsigned char idata ucSNR[5] = {0, 0, 0, 0 ,0};
+  68   1          struct TranSciveBuffer MfComData;
+  69   1          struct TranSciveBuffer *pi;
+  70   1          pi = &MfComData;
+  71   1      
+  72   1          WriteRawRC(RegDecoderControl,0x28);
+  73   1          ClearBitMask(RegControl,0x08);
+  74   1          WriteRawRC(RegChannelRedundancy,0x03);
+  75   1          PcdSetTmo(4);
+  76   1          
+  77   1      
+  78   1          do
+  79   1          {
+  80   2              ucBits = (ucCollPosition) % 8;
+  81   2              if (ucBits != 0)
+  82   2              {
+  83   3                   ucBytes = ucCollPosition / 8 + 1;
+  84   3                   WriteRawRC(RegBitFraming, (ucBits << 4) + ucBits);
+  85   3              }
+  86   2              else
+  87   2              {
+  88   3                   ucBytes = ucCollPosition / 8;
+  89   3              }
+  90   2      	
+  91   2              MfComData.MfCommand = PCD_TRANSCEIVE;
+  92   2              MfComData.MfData[0] = PICC_ANTICOLL1;
+  93   2              MfComData.MfData[1] = 0x20 + ((ucCollPosition / 8) << 4) + (ucBits & 0x0F);
+  94   2              for (i=0; i<ucBytes; i++)
+  95   2      	    {
+  96   3      	        MfComData.MfData[i + 2] = ucSNR[i];
+  97   3      	    }
+  98   2      	    MfComData.MfLength = ucBytes + 2;
+  99   2      	
+ 100   2      	    status = PcdComTransceive(pi);
+ 101   2      	
+ 102   2      	    ucTemp = ucSNR[(ucCollPosition / 8)];
+ 103   2      	    if (status == MI_COLLERR)
+ 104   2      	    {
+ 105   3      	        for (i=0; i < 5 - (ucCollPosition / 8); i++)
+ 106   3      	        {
+ 107   4      		         ucSNR[i + (ucCollPosition / 8)] = MfComData.MfData[i+1];
+ 108   4      	        }
+ 109   3      	        ucSNR[(ucCollPosition / 8)] |= ucTemp;
+ 110   3      	        ucCollPosition = MfComData.MfData[0];
+ 111   3              }
+ 112   2              else if (status == MI_OK)
+ 113   2              {
+ 114   3                  for (i=0; i < (MfComData.MfLength / 8); i++)
+ 115   3                  {
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 3   
+
+ 116   4                       ucSNR[4 - i] = MfComData.MfData[MfComData.MfLength/8 - i - 1];
+ 117   4                  }
+ 118   3                  ucSNR[(ucCollPosition / 8)] |= ucTemp;
+ 119   3              }
+ 120   2          } while (status == MI_COLLERR);
+ 121   1      			
+ 122   1      			
+ 123   1          if (status == MI_OK)
+ 124   1          {
+ 125   2          	 for (i=0; i<4; i++)
+ 126   2               {   
+ 127   3                   *(pSnr+i)  = ucSNR[i];
+ 128   3                   snr_check ^= ucSNR[i];
+ 129   3               }
+ 130   2               if (snr_check != ucSNR[i])
+ 131   2               {   status = MI_COM_ERR;    }
+ 132   2          }
+ 133   1          
+ 134   1          ClearBitMask(RegDecoderControl,0x20);
+ 135   1          return status;
+ 136   1      }
+ 137          
+ 138          /////////////////////////////////////////////////////////////////////
+ 139          //选定一张卡
+ 140          //input:g_cSNR=序列号
+ 141          /////////////////////////////////////////////////////////////////////
+ 142          char PcdSelect(unsigned char *pSnr,unsigned char *pSize)
+ 143          {
+ 144   1          unsigned char i;
+ 145   1          char status;
+ 146   1          unsigned char snr_check = 0;
+ 147   1          struct TranSciveBuffer MfComData;
+ 148   1          struct TranSciveBuffer *pi;
+ 149   1          pi = &MfComData;
+ 150   1      
+ 151   1          WriteRawRC(RegChannelRedundancy,0x0F);
+ 152   1          ClearBitMask(RegControl,0x08);
+ 153   1          PcdSetTmo(4);
+ 154   1          
+ 155   1          MfComData.MfCommand = PCD_TRANSCEIVE;
+ 156   1          MfComData.MfLength  = 7;
+ 157   1          MfComData.MfData[0] = PICC_ANTICOLL1;
+ 158   1          MfComData.MfData[1] = 0x70;
+ 159   1          for (i=0; i<4; i++)
+ 160   1          {
+ 161   2          	snr_check ^= *(pSnr+i);
+ 162   2          	MfComData.MfData[i+2] = *(pSnr+i);
+ 163   2          }
+ 164   1          MfComData.MfData[6] = snr_check;
+ 165   1      
+ 166   1          status = PcdComTransceive(pi);
+ 167   1          
+ 168   1          if (status == MI_OK)
+ 169   1          {
+ 170   2              if (MfComData.MfLength != 0x8)
+ 171   2              {   status = MI_BITCOUNTERR;   }
+ 172   2              else
+ 173   2              {  *pSize = MfComData.MfData[0];  }
+ 174   2          }
+ 175   1      
+ 176   1          return status;
+ 177   1      }
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 4   
+
+ 178          
+ 179          
+ 180          ///////////////////////////////////////////////////////////////
+ 181          // Key loading into the fm1702sl  EEPROM
+ 182          ///////////////////////////////////////////////////////////////		            
+ 183          char M500PcdLoadKeyE2(unsigned char key_type,
+ 184                                 unsigned char sector,
+ 185                                 unsigned char *uncoded_keys)
+ 186          {
+ 187   1          signed char status = MI_OK;
+ 188   1          unsigned int e2addr = 0x80 + sector * 0x18;
+ 189   1          unsigned char idata coded_keys[12];
+ 190   1      
+ 191   1          if (key_type == PICC_AUTHENT1B)
+ 192   1          {
+ 193   2              e2addr += 12;           // key B offset
+ 194   2          }
+ 195   1          if ((status = ChangeCodeKey(uncoded_keys,coded_keys)) == MI_OK)
+ 196   1          {
+ 197   2              status = PcdWriteE2(e2addr,12,coded_keys);
+ 198   2          }
+ 199   1          return status;
+ 200   1      }
+ 201          
+ 202          
+ 203          /////////////////////////////////////////////////////////////////////
+ 204          //将Mifare_One卡密钥转换为fm1702sl接收格式
+ 205          //input: uncoded=6字节未转换的密钥
+ 206          //output:coded=12字节转换后的密钥
+ 207          /////////////////////////////////////////////////////////////////////
+ 208          char ChangeCodeKey(unsigned char *pUncoded,unsigned char *pCoded)
+ 209          {
+ 210   1         unsigned char cnt=0;
+ 211   1         unsigned char ln=0;
+ 212   1         unsigned char hn=0;
+ 213   1      
+ 214   1         for (cnt=0; cnt<6; cnt++)
+ 215   1         {
+ 216   2            ln = pUncoded[cnt] & 0x0F;
+ 217   2            hn = pUncoded[cnt] >> 4;
+ 218   2            pCoded[cnt*2+1] = (~ln<<4) | ln;
+ 219   2            pCoded[cnt*2]   = (~hn<<4) | hn;
+ 220   2         }
+ 221   1         return MI_OK;
+ 222   1      }
+ 223          
+ 224          /*
+ 225          ///////////////////////////////////////////////////////////////////////
+ 226          // Key loading into the fm1702sl EEPROM
+ 227          // 校验卡密码(E2)
+ 228          ///////////////////////////////////////////////////////////////////////
+ 229          char M500PiccAuthE2( unsigned char idata auth_mode,unsigned char idata *snr,      
+ 230                               unsigned char idata keynr,unsigned char idata block)     
+ 231                                                        
+ 232          {
+ 233              char idata status = MI_OK;
+ 234              unsigned int e2addr = 0x80 + keynr * 0x18;
+ 235              if (auth_mode == PICC_AUTHENT1B)
+ 236              {
+ 237                  e2addr += 12; 
+ 238              }
+ 239          
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 5   
+
+ 240          	 status=PcdLoadKeyE2(e2addr);
+ 241              return status;
+ 242          } 
+ 243          */                       
+ 244          
+ 245          /////////////////////////////////////////////////////////////////////
+ 246          //将存在fm1702sl的EEPROM中的密钥匙调入fm1702sl的FIFO
+ 247          //input: startaddr=EEPROM地址
+ 248          /////////////////////////////////////////////////////////////////////
+ 249          char PcdLoadKeyE2( unsigned char idata auth_mode,unsigned char idata keynr)
+*** WARNING C258 IN LINE 249 OF ISO14443A.C: 'auth_mode': mspace on parameter ignored
+*** WARNING C258 IN LINE 249 OF ISO14443A.C: 'keynr': mspace on parameter ignored
+ 250          {
+ 251   1          char status;
+ 252   1          struct TranSciveBuffer MfComData;
+ 253   1          struct TranSciveBuffer *pi;
+ 254   1      	unsigned char *e2addrbuf;
+ 255   1      	unsigned int e2addr = 0x80 + keynr * 0x18;
+ 256   1      	e2addrbuf = (unsigned char *)&e2addr;
+ 257   1      	pi = &MfComData;
+ 258   1          if (auth_mode == PICC_AUTHENT1B)
+ 259   1          {
+ 260   2              e2addr += 12; 
+ 261   2          }
+ 262   1          
+ 263   1      	memcpy(MfComData.MfData,e2addrbuf,2); 
+ 264   1          MfComData.MfData[2] = MfComData.MfData[0];      
+ 265   1          MfComData.MfData[0] = MfComData.MfData[1]; 
+ 266   1          MfComData.MfData[1] = MfComData.MfData[2];
+ 267   1      
+ 268   1          MfComData.MfCommand = PCD_LOADKEYE2;
+ 269   1          MfComData.MfLength  = 2;
+ 270   1      //    MfComData.MfData[0] = startaddr & 0xFF;
+ 271   1      //    MfComData.MfData[1] = (startaddr >> 8) & 0xFF;
+ 272   1          
+ 273   1          status = PcdComTransceive(pi);
+ 274   1          
+ 275   1          return status;
+ 276   1      }
+ 277          
+ 278          
+ 279          
+ 280          /////////////////////////////////////////////////////////////////////
+ 281          //功能：将已转换格式后的密钥送到fm1702sl的FIFO中
+ 282          //input:keys=密钥
+ 283          /////////////////////////////////////////////////////////////////////
+ 284          char PcdAuthKey(unsigned char *pKeys)
+ 285          {
+ 286   1          char status;
+ 287   1          struct TranSciveBuffer MfComData;
+ 288   1          struct TranSciveBuffer *pi;
+ 289   1          pi = &MfComData;
+ 290   1      
+ 291   1          PcdSetTmo(4);
+ 292   1          MfComData.MfCommand = PCD_LOADKEY;
+ 293   1          MfComData.MfLength  = 12;
+ 294   1          memcpy(&MfComData.MfData[0], pKeys, 12);    
+ 295   1      
+ 296   1          status = PcdComTransceive(pi);
+ 297   1      
+ 298   1          return status;
+ 299   1      }
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 6   
+
+ 300          
+ 301          /////////////////////////////////////////////////////////////////////
+ 302          //功能：用存放fm1702sl的FIFO中的密钥和卡上的密钥进行验证
+ 303          //input:auth_mode=验证方式,0x60:验证A密钥,0x61:验证B密钥
+ 304          //      block=要验证的绝对块号
+ 305          //      g_cSNR=序列号首地址
+ 306          /////////////////////////////////////////////////////////////////////
+ 307          char PcdAuthState(unsigned char auth_mode,unsigned char block,unsigned char *pSnr)
+ 308          {
+ 309   1          char status;
+ 310   1          struct TranSciveBuffer MfComData;
+ 311   1          struct TranSciveBuffer *pi;
+ 312   1          pi = &MfComData;
+ 313   1      
+ 314   1          WriteRawRC(RegChannelRedundancy,0x0F);
+ 315   1          PcdSetTmo(4);
+ 316   1          MfComData.MfCommand = PCD_AUTHENT1;
+ 317   1          MfComData.MfLength  = 6;
+ 318   1          MfComData.MfData[0] = auth_mode;
+ 319   1          MfComData.MfData[1] = block;
+ 320   1          memcpy(&MfComData.MfData[2], pSnr, 4);    
+ 321   1            
+ 322   1          status = PcdComTransceive(pi);
+ 323   1          if (status == MI_OK)
+ 324   1          {
+ 325   2              if (ReadRawRC(RegSecondaryStatus) & 0x07) 
+ 326   2              {   status = MI_BITCOUNTERR;    }
+ 327   2              else
+ 328   2              {
+ 329   3                   MfComData.MfCommand = PCD_AUTHENT2;
+ 330   3                   MfComData.MfLength  = 0;
+ 331   3                   status = PcdComTransceive(pi);
+ 332   3                   if (status == MI_OK)
+ 333   3                   {
+ 334   4                       if (ReadRawRC(RegControl) & 0x08)
+ 335   4                       {   status = MI_OK;   }
+ 336   4                       else
+ 337   4                       {   status = MI_AUTHERR;   }
+ 338   4                      
+ 339   4                   }
+ 340   3               }
+ 341   2          }
+ 342   1          return status;
+ 343   1      }
+ 344          
+ 345          /////////////////////////////////////////////////////////////////////
+ 346          //读mifare_one卡上一块(block)数据(16字节)
+ 347          //input: addr = 要读的绝对块号
+ 348          //output:readdata = 读出的数据
+ 349          /////////////////////////////////////////////////////////////////////
+ 350          char PcdRead(unsigned char addr,unsigned char *pReaddata)
+ 351          {
+ 352   1          char status;
+ 353   1          struct TranSciveBuffer MfComData;
+ 354   1          struct TranSciveBuffer *pi;
+ 355   1          pi = &MfComData;
+ 356   1      
+ 357   1          PcdSetTmo(4);
+ 358   1          WriteRawRC(RegChannelRedundancy,0x0F);
+ 359   1          MfComData.MfCommand = PCD_TRANSCEIVE;
+ 360   1          MfComData.MfLength  = 2;
+ 361   1          MfComData.MfData[0] = PICC_READ;
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 7   
+
+ 362   1          MfComData.MfData[1] = addr;
+ 363   1      
+ 364   1          status = PcdComTransceive(pi);
+ 365   1          if (status == MI_OK)
+ 366   1          {
+ 367   2              if (MfComData.MfLength != 0x80)
+ 368   2              {   status = MI_BITCOUNTERR;   }
+ 369   2              else
+ 370   2              {   memcpy(pReaddata, &MfComData.MfData[0], 16);  }
+ 371   2          }
+ 372   1          return status;
+ 373   1      }
+ 374          
+ 375          /////////////////////////////////////////////////////////////////////
+ 376          //写数据到卡上的一块
+ 377          //input:adde=要写的绝对块号
+ 378          //      writedata=写入数据
+ 379          /////////////////////////////////////////////////////////////////////
+ 380          char PcdWrite(unsigned char addr,unsigned char *pWritedata)
+ 381          {
+ 382   1          char status;
+ 383   1          struct TranSciveBuffer MfComData;
+ 384   1          struct TranSciveBuffer *pi;
+ 385   1          pi = &MfComData;
+ 386   1          
+ 387   1          PcdSetTmo(5);
+ 388   1          WriteRawRC(RegChannelRedundancy,0x07); 
+ 389   1          MfComData.MfCommand = PCD_TRANSCEIVE;
+ 390   1          MfComData.MfLength  = 2;
+ 391   1          MfComData.MfData[0] = PICC_WRITE;
+ 392   1          MfComData.MfData[1] = addr;
+ 393   1      
+ 394   1          status = PcdComTransceive(pi);
+ 395   1          if (status != MI_NOTAGERR)
+ 396   1          {
+ 397   2              if(MfComData.MfLength != 4)
+ 398   2              {   status=MI_BITCOUNTERR;   }
+ 399   2              else
+ 400   2              {
+ 401   3                 MfComData.MfData[0] &= 0x0F;
+ 402   3                 switch (MfComData.MfData[0])
+ 403   3                 {
+ 404   4                    case 0x00:
+ 405   4                       status = MI_NOTAUTHERR;
+ 406   4                       break;
+ 407   4                    case 0x0A:
+ 408   4                       status = MI_OK;
+ 409   4                       break;
+ 410   4                    default:
+ 411   4                       status = MI_CODEERR;
+ 412   4                       break;
+ 413   4                 }
+ 414   3              }
+ 415   2          }
+ 416   1          if (status == MI_OK)
+ 417   1          {
+ 418   2              PcdSetTmo(5);
+ 419   2              MfComData.MfCommand = PCD_TRANSCEIVE;
+ 420   2              MfComData.MfLength  = 16;
+ 421   2              memcpy(&MfComData.MfData[0], pWritedata, 16);
+ 422   2              
+ 423   2              status = PcdComTransceive(pi);
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 8   
+
+ 424   2              if (status != MI_NOTAGERR)
+ 425   2              {
+ 426   3                  MfComData.MfData[0] &= 0x0F;
+ 427   3                  switch(MfComData.MfData[0])
+ 428   3                  {
+ 429   4                     case 0x00:
+ 430   4                        status = MI_WRITEERR;
+ 431   4                        break;
+ 432   4                     case 0x0A:
+ 433   4                        status = MI_OK;
+ 434   4                        break;
+ 435   4                     default:
+ 436   4                        status = MI_CODEERR;
+ 437   4                        break;
+ 438   4                 }
+ 439   3              }
+ 440   2              PcdSetTmo(4);
+ 441   2          }
+ 442   1          return status;
+ 443   1      }
+ 444          
+ 445          
+ 446          /////////////////////////////////////////////////////////////////////
+ 447          //扣款和充值
+ 448          //input:dd_mode=命令字,0xC0:扣款,0xC1:充值
+ 449          //      addr=钱包的绝对块号
+ 450          //      value=4字节增(减)值首地址,16进制数,低位在前
+ 451          /////////////////////////////////////////////////////////////////////
+ 452          char PcdValue(unsigned char dd_mode,unsigned char addr,unsigned char *pValue)
+ 453          {
+ 454   1          char status;
+ 455   1          struct TranSciveBuffer MfComData;
+ 456   1          struct TranSciveBuffer *pi;
+ 457   1          pi = &MfComData;
+ 458   1      
+ 459   1          PcdSetTmo(5);
+ 460   1      	WriteRawRC(RegCRCPresetLSB,0x63);
+ 461   1      	WriteRawRC(RegCwConductance,0x3F);
+ 462   1          WriteRawRC(RegChannelRedundancy,0x07);
+ 463   1          MfComData.MfCommand = PCD_TRANSCEIVE;
+ 464   1          MfComData.MfLength  = 2;
+ 465   1          MfComData.MfData[0] = dd_mode;
+ 466   1          MfComData.MfData[1] = addr;
+ 467   1      //	WriteRawRC(RegChannelRedundancy,0x07);
+ 468   1      
+ 469   1          status = PcdComTransceive(pi);
+ 470   1          if (status != MI_NOTAGERR)
+ 471   1          {
+ 472   2              if (MfComData.MfLength != 4)
+ 473   2             {   status = MI_BITCOUNTERR;   }
+ 474   2              else
+ 475   2              {
+ 476   3                 MfComData.MfData[0] &= 0x0F;
+ 477   3                 switch (MfComData.MfData[0])
+ 478   3                 {
+ 479   4                    case 0x00:
+ 480   4                       status = MI_NOTAUTHERR;
+ 481   4                       break;
+ 482   4                    case 0x0A:
+ 483   4                       status = MI_OK;
+ 484   4                       break;
+ 485   4                    case 0x01:
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 9   
+
+ 486   4                       status = MI_VALERR;
+ 487   4                       break;
+ 488   4                    default:
+ 489   4                      status = MI_CODEERR;
+ 490   4                       break;
+ 491   4                 }
+ 492   3              }
+ 493   2           }
+ 494   1           if (status == MI_OK)
+ 495   1           {
+ 496   2              PcdSetTmo(5);
+ 497   2              MfComData.MfCommand = PCD_TRANSCEIVE;
+ 498   2              MfComData.MfLength  = 4;
+ 499   2              pi = &MfComData;
+ 500   2              memcpy(&MfComData.MfData[0], pValue, 4);
+ 501   2      
+ 502   2              status = PcdComTransceive(pi);
+ 503   2              if (status==MI_OK)
+ 504   2              {
+ 505   3                 if (MfComData.MfLength != 4)
+ 506   3                {   status = MI_BITCOUNTERR;   }
+ 507   3                 else
+ 508   3                 {   status = MI_OK;            }
+ 509   3              }
+ 510   2              else if(status == MI_NOTAGERR)
+ 511   2              {   status = MI_OK;    }
+ 512   2              else
+ 513   2             {   status=MI_COM_ERR;     }
+ 514   2           }
+ 515   1           
+ 516   1           if (status == MI_OK)
+ 517   1           {
+ 518   2              MfComData.MfCommand = PCD_TRANSCEIVE;
+ 519   2              MfComData.MfLength  = 2;
+ 520   2              MfComData.MfData[0] = PICC_TRANSFER;
+ 521   2              MfComData.MfData[1] = addr;
+ 522   2              
+ 523   2              status = PcdComTransceive(pi);
+ 524   2              if (status != MI_NOTAGERR)
+ 525   2              {
+ 526   3                  if (MfComData.MfLength != 4)
+ 527   3                  {   status = MI_BITCOUNTERR;    }
+ 528   3                  else
+ 529   3                  {
+ 530   4                     MfComData.MfData[0] &= 0x0F;
+ 531   4                     switch(MfComData.MfData[0])
+ 532   4                     {
+ 533   5                        case 0x00:
+ 534   5                          status = MI_NOTAUTHERR;
+ 535   5                           break;
+ 536   5                        case 0x0a:
+ 537   5                           status = MI_OK;
+ 538   5                           break;
+ 539   5                        case 0x01:
+ 540   5                           status = MI_VALERR;
+ 541   5                           break;
+ 542   5                        default:
+ 543   5                          status = MI_CODEERR;
+ 544   5                           break;
+ 545   5                     }
+ 546   4                  }
+ 547   3              }
+C51 COMPILER V6.12  ISO14443A                                                              08/27/2012 18:45:09 PAGE 10  
+
+ 548   2           }
+ 549   1           return status;
+ 550   1      }
+ 551          
+ 552          /////////////////////////////////////////////////////////////////////
+ 553          //命令卡进入休眠状态
+ 554          /////////////////////////////////////////////////////////////////////
+ 555          char PcdHalt()
+ 556          {
+ 557   1          char status = MI_OK;
+ 558   1          struct TranSciveBuffer MfComData;
+ 559   1          struct TranSciveBuffer *pi;
+ 560   1          pi = &MfComData;
+ 561   1      
+ 562   1          MfComData.MfCommand = PCD_TRANSCEIVE;
+ 563   1          MfComData.MfLength  = 2;
+ 564   1          MfComData.MfData[0] = PICC_HALT;
+ 565   1          MfComData.MfData[1] = 0;
+ 566   1      
+ 567   1          status = PcdComTransceive(pi);
+ 568   1          if (status)
+ 569   1          {
+ 570   2              if (status==MI_NOTAGERR || status==MI_ACCESSTIMEOUT)
+ 571   2              status = MI_OK;
+ 572   2          }
+ 573   1          WriteRawRC(RegCommand,PCD_IDLE);
+ 574   1          return status;
+ 575   1      }
+ 576          
+ 577          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1730    ----
+   CONSTANT SIZE    =      5    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----     759
+   IDATA SIZE       =   ----      17
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  4 WARNING(S),  0 ERROR(S)

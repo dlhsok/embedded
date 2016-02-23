@@ -1,0 +1,127 @@
+C51 COMPILER V6.12  12864                                                                  08/19/2012 14:18:30 PAGE 1   
+
+
+C51 COMPILER V6.12, COMPILATION OF MODULE 12864
+OBJECT MODULE PLACED IN 12864.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE 12864.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+stmt level    source
+
+   1          #include "reg52.h"
+   2          #include "string.h"
+   3          #include "main.h"
+   4          #include "12864.h"
+   5           unsigned char   code table_1[]={"校园一卡通研发"};
+   6          
+   7          /////延时函数//////////////////////////////////
+   8          void delay1(unsigned int z)
+   9          {
+  10   1      	unsigned int x,y;
+  11   1      	for(x=z;x>0;x--)
+  12   1      	for(y=110;y>0;y--);	
+  13   1      }
+  14          ///////////////////////////////////////////////
+  15          //////写命令////////////////////////////////////
+  16          void WriteCommand(unsigned char a)
+  17          {
+  18   1      	 E=0;  //1读取信息；1-0下降沿执行指令
+*** ERROR C202 IN LINE 18 OF 12864.C: 'E': undefined identifier
+  19   1      	 RS=0;  //0=写指令；1=写数据
+*** ERROR C202 IN LINE 19 OF 12864.C: 'RS': undefined identifier
+  20   1      	 RW=0;  //0=写指令或数据；1=读LCD信息
+*** ERROR C202 IN LINE 20 OF 12864.C: 'RW': undefined identifier
+  21   1      	 E=1;  //读信息
+*** ERROR C202 IN LINE 21 OF 12864.C: 'E': undefined identifier
+  22   1      	 P1=a;  //写指令
+  23   1      	 delay1(5);           //延时 
+  24   1      	 E=0;    //执行指令
+*** ERROR C202 IN LINE 24 OF 12864.C: 'E': undefined identifier
+  25   1      	 delay1(5);           //延时 
+  26   1      }
+  27          //////////////////////////////////////////////////
+  28          
+  29          
+  30          //////写数据//////////////////////////////////////
+  31          void WriteData(unsigned char b)  
+  32          {
+  33   1      
+  34   1           E=0;   //执行指令
+*** ERROR C202 IN LINE 34 OF 12864.C: 'E': undefined identifier
+  35   1      	 RS=1;   //写数据
+*** ERROR C202 IN LINE 35 OF 12864.C: 'RS': undefined identifier
+  36   1      	 RW=0;   //写数据
+*** ERROR C202 IN LINE 36 OF 12864.C: 'RW': undefined identifier
+  37   1      	 E=1;   //读取信息
+*** ERROR C202 IN LINE 37 OF 12864.C: 'E': undefined identifier
+  38   1      	 P1=b;   //写数据
+  39   1      	 delay1(5);      //延时 
+  40   1      	 E=0;     //执行指令
+*** ERROR C202 IN LINE 40 OF 12864.C: 'E': undefined identifier
+  41   1      	 delay1(5);      //延时 
+  42   1      }
+  43          //////////////////////////////////////////////////
+  44          
+  45          
+C51 COMPILER V6.12  12864                                                                  08/19/2012 14:18:30 PAGE 2   
+
+  46          
+  47          ///////初始化////////////////////////////////////
+  48          void initial_LCD()      
+  49          {   
+  50   1      
+  51   1         	 PSB=1;      //选择为并口
+*** ERROR C202 IN LINE 51 OF 12864.C: 'PSB': undefined identifier
+  52   1      	 WriteCommand(0x01);  //清屏
+  53   1      	 WriteCommand(0x30);  //功能设置。8字节界面，基本指令集。（0011 x0xx）
+  54   1      	 WriteCommand(0x0c);  //显示设置。整体显示，光标不显示，光标不反向。（0000 1110）
+  55   1      	 WriteCommand(0x06);   //输入方式设置。光标右移，地址位加1；整体右移。（0000 0110)
+  56   1      	// WriteCommand(0x14);   //光标右移。
+  57   1      }
+  58          /////////////////////////////////////////////////
+  59          
+  60          
+  61          
+  62          //////////数值的转换格式  \ 显示数值 ////////////////
+  63          
+  64          void LCD_Data(unsigned char LCDbyte )
+  65          {
+  66   1      	 unsigned char count;
+  67   1      	 count=(LCDbyte&0xf0)>>4;
+  68   1      	 if (count>0x9) WriteData(count%9+0x40);
+  69   1      	 else WriteData(count+0x30);
+  70   1      	 count=LCDbyte&0x0f;
+  71   1      	 if (count>9) WriteData(count%9+0x40);
+  72   1      	 else WriteData(count+0x30);
+  73   1      }
+  74          
+  75           void disCardAID(unsigned char *gID)
+  76           {
+  77   1       	unsigned char i;
+  78   1       	 WriteCommand(0x88);  		
+  79   1      
+  80   1      	for(i=0;i<4;i++)
+  81   1      	{
+  82   2      
+  83   2      	    WriteCommand(0x98+i);
+  84   2      		LCD_Data(gID[0+i]); //4个字节的序列号
+  85   2      		
+  86   2      	}
+  87   1       }
+  88          
+  89          
+  90          
+  91          void DispalyLcd()
+  92          {
+  93   1      	 unsigned char i;
+  94   1      	 WriteCommand(0x80);  		//页地址,从80开始,详情参见资料//
+  95   1      	 for (i=1;i<=14;i++)		//第一行显示的是7个汉字,1个汉字为2个字节,所以这里要发送14个字节//
+  96   1      	 WriteData(table_1[i-1])  ;   
+  97   1      
+  98   1      
+  99   1      
+ 100   1      }
+ 101          
+ 102          
+ 103            
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  11 ERROR(S)

@@ -1,0 +1,567 @@
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 1   
+
+
+C51 COMPILER V6.12, COMPILATION OF MODULE SLRC1702
+OBJECT MODULE PLACED IN SlRc1702.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE SlRc1702.C ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+stmt level    source
+
+   1          #include "reg52.h"
+   2          #include <intrins.h>
+   3          #include <string.h>
+   4          #include "main.h"
+   5          #include "slrc1702.h"
+   6          
+   7          
+   8          #define FSD 64
+   9          
+  10          extern struct TranSciveBuffer{unsigned char MfCommand;
+  11                                        unsigned int  MfLength;
+  12                                        unsigned char MfData[64];
+  13                                       };
+  14          /////////////////////////////////////////////////////////////////////
+  15          //复位并初始化fm1702
+  16          //
+  17          /////////////////////////////////////////////////////////////////////
+  18          char PcdReset()
+  19          {
+  20   1         char status = MI_OK;
+  21   1         char n = 0xFF;
+  22   1         unsigned int i = 3000;
+  23   1      
+  24   1          DelayMs(100);
+  25   1          DelayMs(100);
+  26   1      	DelayMs(100);
+  27   1          DelayMs(100);
+  28   1          DelayMs(100);
+  29   1          DelayMs(100);
+  30   1          DelayMs(100);
+  31   1      
+  32   1         RC1702_RST=0;
+  33   1         DelayMs(50);
+  34   1         DelayMs(50);
+  35   1      
+  36   1         RC1702_RST=1;
+  37   1         DelayMs(5);
+  38   1         DelayMs(50);
+  39   1         DelayMs(50);
+  40   1         DelayMs(50);
+  41   1         DelayMs(50);
+  42   1         DelayMs(50);
+  43   1         DelayMs(50);
+  44   1         RC1702_RST=0;
+  45   1         DelayMs(5);
+  46   1      
+  47   1         while (i!=0 && n)
+  48   1         {
+  49   2            n = ReadRawRC(RegCommand);
+  50   2            i--;
+  51   2         }
+  52   1      
+  53   1         if (i != 0)
+  54   1         {
+  55   2            WriteRawRC(RegPage,0x80);
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 2   
+
+  56   2            n = 0x80;
+  57   2            while ( (i!=0) && (n&0x80) )
+  58   2            {
+  59   3                n = ReadRawRC(RegCommand);
+  60   3                i--;
+  61   3            }
+  62   2            if (i==0 || (n&0xFF))
+  63   2            {   status = MI_RESETERR;   }
+  64   2         }
+  65   1         else
+  66   1         {    status = MI_RESETERR;     }
+  67   1         
+  68   1         if (status == MI_OK)
+  69   1         {    WriteRawRC(RegPage,0x0);  }
+  70   1         
+  71   1         return status;
+  72   1      }
+  73          
+  74          //////////////////////////////////////////////////////////////////////
+  75          //设置1702的工作方式 
+  76          //////////////////////////////////////////////////////////////////////
+  77          char PcdConfigISOType(unsigned char type)
+  78          {
+  79   1         
+  80   1         if (type == 'A')                    //ISO14443_A
+  81   1         { 
+  82   2             ClearBitMask(RegControl,0x08);
+  83   2      
+  84   2             WriteRawRC(RegClockQControl,0x0);
+  85   2             WriteRawRC(RegClockQControl,0x40);
+  86   2             Delay_50us(2);                   // wait approximately 100 us - calibration in progress
+  87   2             ClearBitMask(RegClockQControl,0x40);
+  88   2             WriteRawRC(RegBitPhase,0xAD);	
+  89   2             WriteRawRC(RegRxThreshold,0xFF);
+  90   2             WriteRawRC(RegRxControl2,0x01);      
+  91   2      
+  92   2             WriteRawRC(RegTimerControl,0x02);   
+  93   2             WriteRawRC(RegIRqPinConfig,0x03); 
+  94   2      	    M500PcdRfReset(1);
+  95   2      
+  96   2             PcdSetTmo(106);
+  97   2             DelayMs(1);
+  98   2             PcdAntennaOn();
+  99   2      
+ 100   2         }
+ 101   1      
+ 102   1         else{ return -1; }
+ 103   1         return MI_OK;
+ 104   1      }
+ 105          ///////////////////////////////////////////////////////////////////////
+ 106          // Reset Rf Card
+ 107          ///////////////////////////////////////////////////////////////////////
+ 108          char M500PcdRfReset(unsigned char ms)
+ 109          {
+ 110   1          char status = MI_OK;
+ 111   1      	
+ 112   1          if(ms)
+ 113   1          {
+ 114   2              ClearBitMask(RegTxControl,0x03); 
+ 115   2               DelayMs(2);                
+ 116   2              SetBitMask(RegTxControl,0x03); 
+ 117   2          }
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 3   
+
+ 118   1          else
+ 119   1          {
+ 120   2              ClearBitMask(RegTxControl,0x03);  
+ 121   2          }
+ 122   1          return status;
+ 123   1      }
+ 124          
+ 125          
+ 126          /////////////////////////////////////////////////////////////////////
+ 127          //读1702寄存器位
+ 128          //input:Address=寄存器地址
+ 129          //ouput:读出的值
+ 130          /////////////////////////////////////////////////////////////////////
+ 131          unsigned char ReadRawRC(unsigned char Address)
+ 132          {
+ 133   1           unsigned char i, ucAddr;
+ 134   1           unsigned char ucResult=0;
+ 135   1      
+ 136   1           RC1702_SCK = 0;
+ 137   1           RC1702_NSS = 0;
+ 138   1           ucAddr =((Address<<1)&0x7E)|0x80;
+ 139   1      
+ 140   1           for(i=8;i>0;i--)
+ 141   1           {
+ 142   2               RC1702_MOSI = ((ucAddr&0x80)==0x80);
+ 143   2               RC1702_SCK = 1;
+ 144   2               ucAddr <<= 1;
+ 145   2               RC1702_SCK = 0;
+ 146   2           }
+ 147   1      
+ 148   1           for(i=8;i>0;i--)
+ 149   1           {
+ 150   2               RC1702_SCK = 1;
+ 151   2               ucResult <<= 1;
+ 152   2               ucResult|=(bit)RC1702_MISO;
+ 153   2               RC1702_SCK = 0;
+ 154   2           }
+ 155   1      
+ 156   1      	 RC1702_NSS = 1;
+ 157   1      	 RC1702_SCK = 1;
+ 158   1           return ucResult;
+ 159   1      }
+ 160          
+ 161          
+ 162          /////////////////////////////////////////////////////////////////////
+ 163          //写1702寄存器
+ 164          //input:Address=寄存器地址
+ 165          //      value=要写入的值
+ 166          /////////////////////////////////////////////////////////////////////
+ 167          
+ 168          void WriteRawRC(unsigned char Address, unsigned char value)
+ 169          {  
+ 170   1          unsigned char i, ucAddr;
+ 171   1      
+ 172   1          RC1702_SCK = 0;
+ 173   1          RC1702_NSS = 0;
+ 174   1          ucAddr = ((Address<<1)&0x7E);
+ 175   1      
+ 176   1          for(i=8;i>0;i--)
+ 177   1          {
+ 178   2              RC1702_MOSI = ((ucAddr&0x80)==0x80);
+ 179   2              RC1702_SCK = 1;
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 4   
+
+ 180   2              ucAddr <<= 1;
+ 181   2              RC1702_SCK = 0;
+ 182   2          }
+ 183   1      
+ 184   1          for(i=8;i>0;i--)
+ 185   1          {
+ 186   2              RC1702_MOSI = ((value&0x80)==0x80);
+ 187   2              RC1702_SCK = 1;
+ 188   2              value <<= 1;
+ 189   2              RC1702_SCK = 0;
+ 190   2          }
+ 191   1              RC1702_NSS = 1;
+ 192   1              RC1702_SCK = 1;
+ 193   1      }
+ 194          
+ 195          
+ 196          /////////////////////////////////////////////////////////////////////
+ 197          //置1702寄存器位
+ 198          //input:reg=寄存器地址
+ 199          //      mask=置位值
+ 200          /////////////////////////////////////////////////////////////////////
+ 201          void SetBitMask(unsigned char reg,unsigned char mask)  
+ 202          {
+ 203   1         char tmp = 0x0;
+ 204   1         tmp = ReadRawRC(reg);
+ 205   1         WriteRawRC(reg,tmp | mask);  // set bit mask
+ 206   1      }
+ 207          
+ 208          /////////////////////////////////////////////////////////////////////
+ 209          //清1702寄存器位
+ 210          //input:reg=寄存器地址
+ 211          //      mask=清位值
+ 212          /////////////////////////////////////////////////////////////////////
+ 213          void ClearBitMask(unsigned char reg,unsigned char mask)  
+ 214          {
+ 215   1         char tmp = 0x0;
+ 216   1         tmp = ReadRawRC(reg);
+ 217   1         WriteRawRC(reg, tmp & ~mask);  // clear bit mask
+ 218   1      } 
+ 219          
+ 220          /////////////////////////////////////////////////////////////////////
+ 221          //设置1702定时器
+ 222          //input:tmolength=设置值
+ 223          /////////////////////////////////////////////////////////////////////
+ 224          void PcdSetTmo(unsigned char tmoLength)
+ 225          {
+ 226   1         switch(tmoLength)
+ 227   1         {  
+ 228   2            case 0:                         // (0.302 ms) FWI=0
+ 229   2               WriteRawRC(RegTimerClock,0x07); // TAutoRestart=0,TPrescale=128
+ 230   2               WriteRawRC(RegTimerReload,0x21);// TReloadVal = 'h21 =33(dec) 
+ 231   2               break;
+ 232   2            case 1:                         // (0.604 ms) FWI=1
+ 233   2               WriteRawRC(RegTimerClock,0x07); // TAutoRestart=0,TPrescale=128
+ 234   2               WriteRawRC(RegTimerReload,0x41);// TReloadVal = 'h41 =65(dec) 
+ 235   2               break;
+ 236   2            case 2:                         // (1.208 ms) FWI=2
+ 237   2               WriteRawRC(RegTimerClock,0x07); // TAutoRestart=0,TPrescale=128
+ 238   2               WriteRawRC(RegTimerReload,0x81);// TReloadVal = 'h81 =129(dec) 
+ 239   2               break;
+ 240   2            case 3:                         // (2.416 ms) FWI=3
+ 241   2               WriteRawRC(RegTimerClock,0x09); // TAutoRestart=0,TPrescale=4*128
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 5   
+
+ 242   2               WriteRawRC(RegTimerReload,0x41);// TReloadVal = 'h41 =65(dec) 
+ 243   2               break;
+ 244   2            case 4:                         // (4.833 ms) FWI=4
+ 245   2               WriteRawRC(RegTimerClock,0x09); // TAutoRestart=0,TPrescale=4*128
+ 246   2               WriteRawRC(RegTimerReload,0x81);// TReloadVal = 'h81 =129(dec) 
+ 247   2               break;
+ 248   2            case 5:                         // (9.666 ms) FWI=5
+ 249   2               WriteRawRC(RegTimerClock,0x0B); // TAutoRestart=0,TPrescale=16*128
+ 250   2               WriteRawRC(RegTimerReload,0x41);// TReloadVal = 'h41 =65(dec) 
+ 251   2               break;
+ 252   2            case 6:                         // (19.33 ms) FWI=6
+ 253   2               WriteRawRC(RegTimerClock,0x0B); // TAutoRestart=0,TPrescale=16*128
+ 254   2               WriteRawRC(RegTimerReload,0x81);// TReloadVal = 'h81 =129(dec) 
+ 255   2               break;
+ 256   2            case 7:                         // (38.66 ms) FWI=7
+ 257   2               WriteRawRC(RegTimerClock,0x0D); // TAutoRestart=0,TPrescale=64*128
+ 258   2               WriteRawRC(RegTimerReload,0x41);// TReloadVal = 'h41 =65(dec) 
+ 259   2               break;
+ 260   2            case 8:                         // (77.32 ms) FWI=8
+ 261   2               WriteRawRC(RegTimerClock,0x0D); // TAutoRestart=0,TPrescale=64*128
+ 262   2               WriteRawRC(RegTimerReload,0x81);// TReloadVal = 'h81 =129(dec) 
+ 263   2               break;
+ 264   2            case 9:                         // (154.6 ms) FWI=9
+ 265   2               WriteRawRC(RegTimerClock,0x0F); // TAutoRestart=0,TPrescale=256*128
+ 266   2               WriteRawRC(RegTimerReload,0x41);// TReloadVal = 'h41 =65(dec) 
+ 267   2               break;
+ 268   2            case 10:                        // (309.3 ms) FWI=10
+ 269   2               WriteRawRC(RegTimerClock,0x0F); // TAutoRestart=0,TPrescale=256*128
+ 270   2               WriteRawRC(RegTimerReload,0x81);// TReloadVal = 'h81 =129(dec) 
+ 271   2               break;
+ 272   2            case 11:                        // (618.6 ms) FWI=11
+ 273   2               WriteRawRC(RegTimerClock,0x13); // TAutoRestart=0,TPrescale=4096*128
+ 274   2               WriteRawRC(RegTimerReload,0x11);// TReloadVal = 'h21 =17(dec) 
+ 275   2               break;
+ 276   2            case 12:                        // (1.2371 s) FWI=12
+ 277   2               WriteRawRC(RegTimerClock,0x13); // TAutoRestart=0,TPrescale=4096*128
+ 278   2               WriteRawRC(RegTimerReload,0x21);// TReloadVal = 'h41 =33(dec) 
+ 279   2               break;
+ 280   2            case 13:                        // (2.4742 s) FWI=13
+ 281   2               WriteRawRC(RegTimerClock,0x13); // TAutoRestart=0,TPrescale=4096*128
+ 282   2               WriteRawRC(RegTimerReload,0x41);// TReloadVal = 'h81 =65(dec) 
+ 283   2               break;
+ 284   2            case 14:                        // (4.9485 s) FWI=14
+ 285   2               WriteRawRC(RegTimerClock,0x13); // TAutoRestart=0,TPrescale=4096*128
+ 286   2               WriteRawRC(RegTimerReload,0x81);// TReloadVal = 'h81 =129(dec) 
+ 287   2               break;
+ 288   2            case 15:                        // (4.9485 s) FWI=14
+ 289   2               WriteRawRC(RegTimerClock,0x9); // TAutoRestart=0,TPrescale=4096*128
+ 290   2               WriteRawRC(RegTimerReload,0x0ff);// TReloadVal = 'h81 =129(dec) 
+ 291   2               break;
+ 292   2            default:                       // 
+ 293   2               WriteRawRC(RegTimerClock,0x19); // TAutoRestart=0,TPrescale=128
+ 294   2               WriteRawRC(RegTimerReload,tmoLength);// TReloadVal = 'h6a =tmoLength(dec) 
+ 295   2               break;
+ 296   2         }     
+ 297   1         WriteRawRC(RegTimerControl,0X06);
+ 298   1      }
+ 299          
+ 300          /////////////////////////////////////////////////////////////////////
+ 301          //通过1702和ISO14443卡通讯
+ 302          //input: pi->MfCommand = RC1702命令字
+ 303          //       pi->MfLength  = 发送的数据长度
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 6   
+
+ 304          //       pi->MfData[]  = 发送数据
+ 305          //output:status        = 错误字
+ 306          //       pi->MfLength  = 接收的数据BIT长度
+ 307          //       pi->MfData[]  = 接收数据
+ 308          /////////////////////////////////////////////////////////////////////
+ 309          char PcdComTransceive(struct TranSciveBuffer *pi)
+ 310          {
+ 311   1         bit recebyte = 0;
+ 312   1         char status;
+ 313   1         unsigned char irqEn   = 0x00;
+ 314   1         unsigned char waitFor = 0x00;
+ 315   1         unsigned char lastBits;
+ 316   1         unsigned char n;
+ 317   1         unsigned int i;
+ 318   1         switch (pi->MfCommand)
+ 319   1         {
+ 320   2            case PCD_IDLE:
+ 321   2               irqEn   = 0x00;
+ 322   2               waitFor = 0x00;
+ 323   2               break;
+ 324   2            case PCD_WRITEE2:
+ 325   2               irqEn   = 0x11;
+ 326   2               waitFor = 0x10;
+ 327   2               break;
+ 328   2            case PCD_READE2:
+ 329   2               irqEn   = 0x07;
+ 330   2               waitFor = 0x04;
+ 331   2               recebyte=1;
+ 332   2               break;
+ 333   2            case PCD_LOADCONFIG:
+ 334   2            case PCD_LOADKEYE2:
+ 335   2            case PCD_AUTHENT1:
+ 336   2               irqEn   = 0x05;
+ 337   2               waitFor = 0x04;
+ 338   2               break;
+ 339   2            case PCD_CALCCRC:
+ 340   2               irqEn   = 0x11;
+ 341   2               waitFor = 0x10;
+ 342   2               break;
+ 343   2            case PCD_AUTHENT2:
+ 344   2               irqEn   = 0x04;
+ 345   2               waitFor = 0x04;
+ 346   2               break;
+ 347   2            case PCD_RECEIVE:
+ 348   2               irqEn   = 0x06;
+ 349   2               waitFor = 0x04;
+ 350   2               recebyte=1;
+ 351   2               break;
+ 352   2            case PCD_LOADKEY:
+ 353   2               irqEn   = 0x05;
+ 354   2               waitFor = 0x04;
+ 355   2               break;
+ 356   2            case PCD_TRANSMIT:
+ 357   2               irqEn   = 0x05;
+ 358   2               waitFor = 0x04;
+ 359   2               break;
+ 360   2            case PCD_TRANSCEIVE:
+ 361   2               irqEn   = 0x3D;
+ 362   2               waitFor = 0x04;
+ 363   2               recebyte=1;
+ 364   2               break;
+ 365   2            default:
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 7   
+
+ 366   2               pi->MfCommand = MI_UNKNOWN_COMMAND;
+ 367   2               break;
+ 368   2         }
+ 369   1         
+ 370   1         if (pi->MfCommand != MI_UNKNOWN_COMMAND)
+ 371   1         {
+ 372   2            WriteRawRC(RegPage,0x00);
+ 373   2            WriteRawRC(RegInterruptEn,0x7F);
+ 374   2            WriteRawRC(RegInterruptRq,0x7F);
+ 375   2            WriteRawRC(RegCommand,PCD_IDLE);
+ 376   2            SetBitMask(RegControl,0x01);
+ 377   2            WriteRawRC(RegInterruptEn,irqEn|0x80);
+ 378   2            for (i=0; i<pi->MfLength; i++)
+ 379   2            {
+ 380   3               WriteRawRC(RegFIFOData, pi->MfData[i]);
+ 381   3            }
+ 382   2            WriteRawRC(RegCommand, pi->MfCommand);
+ 383   2            i = 0x3500;
+ 384   2            do
+ 385   2            {
+ 386   3               n = ReadRawRC(RegInterruptRq);
+ 387   3               i--;
+ 388   3            }
+ 389   2            while ((i!=0) && !(n&irqEn&0x20) && !(n&waitFor));
+ 390   2            status = MI_COM_ERR;
+ 391   2            if ((i!=0) && !(n&irqEn&0x20))
+ 392   2            {
+ 393   3               if (!(ReadRawRC(RegErrorFlag)&0x17))
+ 394   3               {
+ 395   4                  status = MI_OK;
+ 396   4                  if (recebyte)
+ 397   4                  {
+ 398   5                    	n = ReadRawRC(RegFIFOLength);
+ 399   5                    	lastBits = ReadRawRC(RegSecondaryStatus) & 0x07;
+ 400   5                      if (lastBits)
+ 401   5                      {
+ 402   6                         pi->MfLength = (n-1)*8 + lastBits;
+ 403   6                      }
+ 404   5                      else
+ 405   5                      {
+ 406   6                         pi->MfLength = n*8;
+ 407   6                      }
+ 408   5                      if (n == 0)
+ 409   5                      {
+ 410   6                         n = 1;
+ 411   6                      }
+ 412   5                      for (i=0; i<n; i++)
+ 413   5                      {
+ 414   6                          pi->MfData[i] = ReadRawRC(RegFIFOData);
+ 415   6                      }
+ 416   5                  }
+ 417   4               }
+ 418   3      		 else if (ReadRawRC(RegErrorFlag)&0x01)
+ 419   3               {
+ 420   4      		    status = MI_COLLERR;
+ 421   4                  if (recebyte)
+ 422   4                  {
+ 423   5                    	n = ReadRawRC(RegFIFOLength);
+ 424   5                    	lastBits = ReadRawRC(RegSecondaryStatus) & 0x07;
+ 425   5                      if (lastBits)
+ 426   5                      {
+ 427   6                         pi->MfLength = (n-1)*8 + lastBits;
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 8   
+
+ 428   6                      }
+ 429   5                      else
+ 430   5                      {
+ 431   6                         pi->MfLength = n*8;
+ 432   6                      }
+ 433   5                      if (n == 0)
+ 434   5                      {
+ 435   6                         n = 1;
+ 436   6                      }
+ 437   5                      for (i=0; i<n; i++)
+ 438   5                      {
+ 439   6                          pi->MfData[i+1] = ReadRawRC(RegFIFOData);
+ 440   6                      }
+ 441   5                  }
+ 442   4      			pi->MfData[0]=ReadRawRC(0x0B);
+ 443   4               }
+ 444   3      
+ 445   3            }
+ 446   2            else if (n & irqEn & 0x20)
+ 447   2            {   status = MI_NOTAGERR;   }
+ 448   2            else if (!(ReadRawRC(RegErrorFlag)&0x17))
+ 449   2            {   status = MI_ACCESSTIMEOUT;   }
+ 450   2            else
+ 451   2            {   status = MI_COM_ERR;    }
+ 452   2            
+ 453   2            WriteRawRC(RegInterruptEn,0x7F);
+ 454   2            WriteRawRC(RegInterruptRq,0x7F);
+ 455   2            SetBitMask(RegControl,0x04);           // stop timer now
+ 456   2            WriteRawRC(RegCommand,PCD_IDLE); 
+ 457   2         }
+ 458   1         return status;
+ 459   1      }
+ 460          
+ 461          /*
+ 462          /////////////////////////////////////////////////////////////////////
+ 463          //读fm1702slEEPROM
+ 464          //input :startaddr=EEPROM地址（低位在前）
+ 465          //       length=读字节数
+ 466          //output:readdata=读出的数据
+ 467          /////////////////////////////////////////////////////////////////////
+ 468          char PcdReadE2(unsigned int startaddr,unsigned char length,unsigned char *readdata)
+ 469          {
+ 470              char status;
+ 471              struct TranSciveBuffer MfComData;
+ 472              struct TranSciveBuffer *pi;
+ 473              pi = &MfComData;
+ 474          
+ 475              MfComData.MfCommand = PCD_READE2;
+ 476              MfComData.MfLength  = 3;
+ 477              MfComData.MfData[0] = startaddr&0xFF;
+ 478              MfComData.MfData[1] = (startaddr >> 8) & 0xFF;
+ 479              MfComData.MfData[2] = length;
+ 480          
+ 481              status = PcdComTransceive(pi);
+ 482          
+ 483              if (status == MI_OK)
+ 484              {   memcpy(readdata, &MfComData.MfData[0], length);    }
+ 485              return status;
+ 486          }
+ 487          */
+ 488          
+ 489          /////////////////////////////////////////////////////////////////////
+C51 COMPILER V6.12  SLRC1702                                                               08/27/2012 18:45:10 PAGE 9   
+
+ 490          //写fm1702slEEPROM
+ 491          //input :startaddr=EEPROM地址（低位在前）
+ 492          //       length=写字节数
+ 493          //       writedata=要写入的数据
+ 494          /////////////////////////////////////////////////////////////////////
+ 495          char PcdWriteE2(unsigned int startaddr,unsigned char length,unsigned char *writedata)
+ 496          {
+ 497   1          char status;
+ 498   1          struct TranSciveBuffer MfComData;    
+ 499   1          struct TranSciveBuffer *pi;
+ 500   1          pi = &MfComData;
+ 501   1      
+ 502   1          MfComData.MfCommand = PCD_WRITEE2;
+ 503   1          MfComData.MfLength  = length+2;
+ 504   1          MfComData.MfData[0] = startaddr&0xFF;
+ 505   1          MfComData.MfData[1] = (startaddr >> 8) & 0xFF;
+ 506   1          memcpy(&MfComData.MfData[2], writedata, length);    
+ 507   1      
+ 508   1          status = PcdComTransceive(pi);
+ 509   1          return status;
+ 510   1      }
+ 511          
+ 512          /////////////////////////////////////////////////////////////////////
+ 513          //开启天线  
+ 514          //每次启动或关闭天险发射之间应至少有1ms的间隔
+ 515          /////////////////////////////////////////////////////////////////////
+ 516          char PcdAntennaOn()
+ 517          {
+ 518   1          unsigned char i;
+ 519   1          i = ReadRawRC(RegTxControl);
+ 520   1          if (i & 0x03)
+ 521   1          {   return MI_OK;	}
+ 522   1          else
+ 523   1          {
+ 524   2              SetBitMask(RegTxControl, 0x03);
+ 525   2              return MI_OK;
+ 526   2          }
+ 527   1      }
+ 528          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1639    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      90
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

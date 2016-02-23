@@ -1,0 +1,1131 @@
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 1   
+
+
+C51 COMPILER V6.12, COMPILATION OF MODULE FM1702
+OBJECT MODULE PLACED IN .\FM1702.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE .\FM1702.C DEBUG OBJECTEXTEND
+
+stmt level    source
+
+   1          
+   2          #include <reg51.h>
+   3          #include <intrins.h>
+   4          #include <FM1702.h>
+   5          #include   <STDIO.H>
+   6          
+   7          
+   8          #define uchar unsigned  char
+   9          #define uint  unsigned  int
+  10          
+  11          #define TRUE   1
+  12          #define FALSE  0
+  13          
+  14          
+  15          sbit  rst =P0^7;
+  16          sbit  cs  =P0^6;
+  17          sbit  si  =P0^5;
+  18          sbit  sck =P0^4;
+  19          sbit  so  =P0^3;
+  20          
+  21          sbit  led =P0^2;
+  22          sbit  beep=P1^2;
+  23          
+  24          
+  25          
+  26          
+  27          
+  28          
+  29          
+  30          /////变量定义///////////////
+  31          
+  32          uchar 	RevBuffer[24];		    /* FM1702命令发送接收缓冲区 */
+  33          uchar 	UID[5];		            /* 序列号 */
+  34          uchar  Secnr;			        /* 块号 */
+  35          #define 	m1erea 		0x01     //要操作的扇区号
+  36          
+  37          uint     pay=500;				//刷卡扣取的金额,2个字节,65535
+  38          uint     ctime,cctime;
+  39          uchar    ctimeH,ctimeL;
+  40          uchar lcd[5];
+  41          /////变量定义///////////////
+  42          
+  43          
+  44          
+  45          ////////////////////// 子函声明 /////////////////////////////
+  46          uchar SPIRead(char reg_ad);
+  47          void SPIWrite(char reg_ad,char reg_data);
+  48          void Write_FIFO(uchar count, uchar  *buff);
+  49          uchar Clear_FIFO(void);
+  50          uchar Judge_Req(uchar  *buff);
+  51          uchar Command_Send(uchar count, uchar *buff, uchar Comm_Set);
+  52          uchar Request(uchar mode);
+  53          void delay(uint x);
+  54          uchar Read_FIFO(uchar *buff);
+  55          //void Save_UID(uchar row, uchar col, uchar length);
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 2   
+
+  56          uchar AntiColl();
+  57          uchar Check_UID();
+  58          //void Set_BitFraming(uchar row, uchar col);
+  59          uchar Select_Card();
+  60          char M500HostCodeKey(  uchar *uncoded, uchar *coded);
+  61          uchar Load_key_CPY(uchar *buff);
+  62          void keyto();
+  63          uchar block_numset(uchar block_num);
+  64          uchar MIF_Write(uchar *buff, uchar Block_Adr);
+  65          uchar Read_E2(uchar lsb, uchar msb, uchar count, uchar *buff);
+  66          uchar CRCrdadandset(uchar * buff,uchar RW);
+  67          
+  68          void initial_LCD();
+  69          void DispalyLcd();
+  70          void LCD_Data(uchar LCDbyte );
+  71          void WriteCommand(uchar a);
+  72          void displayUid();
+  73          void displaymun(uchar temp1,uchar temp2,uchar temp3,uchar temp4,uchar temp5,uchar buff1,uchar buff2,uchar 
+             -buff3);
+  74          
+  75          void dis_Request1();
+  76          void dis_Request2();
+  77          void dis_Request3();
+  78          
+  79          
+  80          ////////////////////////////////////////////////////////////////////
+  81          ////////////////////////////////////////////////////////////////////
+  82          
+  83          
+  84          
+  85          
+  86          
+  87          void Init_FM1702()
+  88          {	
+  89   1      	uchar temp;
+  90   1      	uint	i;
+  91   1      	sck = 1;
+  92   1      	so = 1;
+  93   1      	si = 1;
+  94   1      	rst = 1;			            /* FM1702复位 */
+  95   1      	for(i = 0; i < 0xff; i++)
+  96   1      	{
+  97   2      		_nop_();                     /*等待约140ms, 11.0592*/
+  98   2      	}
+  99   1      	rst = 0;
+ 100   1      	for(i = 0; i < 0xff; i++)      
+ 101   1      	{
+ 102   2      		_nop_();
+ 103   2      	}
+ 104   1           ///////////  init_spi  ///////////////////////////////////////////////	
+ 105   1      	while(temp = SPIRead(Command) != 0)	/* 等待Command = 0,FM1702复位成功 */
+ 106   1      	{
+ 107   2      		_nop_();
+ 108   2      	}
+ 109   1      ////////////////////////////////////////////////////////////////////////////
+ 110   1          SPIWrite(Page_Sel,0x80);                 //往PAG里面写0X80初始化SPI接口
+ 111   1      	for(i = 0; i < 0xff; i++) /* 延时 */
+ 112   1      	{
+ 113   2      		if(temp=SPIRead(Command) == 0x00)	//如果Command为0表示初始化SPI接口成功
+ 114   2      		{
+ 115   3      			SPIWrite(Page_Sel,0x00);        //往PAG里面写0开使用SPI接口
+ 116   3      		}
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 3   
+
+ 117   2      	}
+ 118   1           ////////// init_FM1702 ///////////////////////////////////////
+ 119   1      	SPIWrite(InterruptEn,0x7f);	//address 06H  /* 中断使能/禁止寄存器 */off
+ 120   1      	SPIWrite(Int_Req,0x7f);     //address 07H    /* 中断请求标识寄存器 */清0
+ 121   1      	SPIWrite(TxControl,0x5b);	//address 11H    /* 发送控制寄存器 */ 
+ 122   1      	SPIWrite(RxControl2,0x01);  //address 1EH    设置接收控制寄存器
+ 123   1      	SPIWrite(RxWait,0x07);		//address 21H    设置接收和发送之间的时间间隔
+ 124   1          SPIWrite(TypeSH,0x00);      //0:TYPEA模式*//* 1:TYPEB模式*//* 2:上海模式*/
+ 125   1      }	
+ 126          ////////////////////////////////////////////////////////////////////////////
+ 127          
+ 128          
+ 129          
+ 130          //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+ 131          //名称: spi_byte_transceive                                                    //
+ 132          //功能: 该函数实现SPI通讯的数据收发                                            //
+ 133          //									       //
+ 134          //输入:                                                                        //
+ 135          //      发送数据                                                               //
+ 136          //                                                                             //
+ 137          //输出:                                                                        //
+ 138          //      接收数据                                                               //
+ 139          //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+ 140          char spi_byte_transceive(char sendbyte)
+ 141          {
+ 142   1        char i,temp;
+ 143   1        for(i=0;i<8;i++)
+ 144   1         {  
+ 145   2          	sck=0;
+ 146   2          	if(sendbyte & 0x80)                //位运算，判断最高位是否为1
+ 147   2           	{ 
+ 148   3            		si=1;
+ 149   3           	}
+ 150   2          	else
+ 151   2           	{ 
+ 152   3            		si=0;
+ 153   3           	}
+ 154   2          	sendbyte <<= 1;    
+ 155   2          	sck=1;
+ 156   2         	 temp <<= 1;
+ 157   2         	 if(so)
+ 158   2          	temp |= 0x01;
+ 159   2         }
+ 160   1          	sck=0;
+ 161   1          	 _nop_();
+ 162   1      	 _nop_();
+ 163   1          	si=0;
+ 164   1          	return (temp);
+ 165   1      }
+ 166          
+ 167          
+ 168          //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+ 169          //名称: rc531_register_write                                                   // 
+ 170          //功能: 该函数实现通过SPI接口对RC531中一个寄存器写入值                         // 
+ 171          //                                                                             // 
+ 172          //输入:                                                                        // 
+ 173          //     RC531目标寄存器地址和写入值                                             // 
+ 174          //                                                                             // 
+ 175          //输出:                                                                        // 
+ 176          //     N/A                                                                     // 
+ 177          //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+ 178          void SPIWrite(char reg_ad,char reg_data)
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 4   
+
+ 179          {   
+ 180   1          sck=0;                               //时钟
+ 181   1          reg_ad <<= 1;
+ 182   1          cs=0;                              //接口选通
+ 183   1          reg_ad &= 0x7F;                      //最高位为0表示写
+ 184   1          spi_byte_transceive(reg_ad);     //写地址
+ 185   1          spi_byte_transceive(reg_data);  //写数据
+ 186   1          cs=1;
+ 187   1          return;
+ 188   1      }
+ 189          
+ 190          //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+ 191          //名称: rc531_register_read                                                    // 
+ 192          //功能: 该函数实现通过SPI接口读取RC531中一个寄存器的值                         // 
+ 193          //                                                                             // 
+ 194          //输入:                                                                        // 
+ 195          //     RC531目标寄存器地址                                                     // 
+ 196          //                                                                             // 
+ 197          //输出:                                                                        // 
+ 198          //     目标寄存器的值                                                          // 
+ 199          //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+ 200          uchar SPIRead(char reg_ad)
+ 201          {   char temp;
+ 202   1          sck=0;       //时钟
+ 203   1           _nop_();
+ 204   1           _nop_();
+ 205   1          cs=0;      //接口选通开
+ 206   1          reg_ad <<= 1;                          //reg_ad左移一位付值给reg_ad
+ 207   1          reg_ad |= 0x80;                        //reg_ad跟“0X80”或运算后付值给reg_ad   最高位为1表示读
+ 208   1          spi_byte_transceive(reg_ad);
+ 209   1          temp=spi_byte_transceive(0x00);
+ 210   1          cs=1;
+ 211   1          return (temp);
+ 212   1      }
+ 213          
+ 214          
+ 215          /****************************************************************/
+ 216          /*名称: Request */
+ 217          /*功能: 该函数实现对放入FM1702操作范围之内的卡片的Request操作*/
+ 218          /*输入: mode: ALL(监测所以FM1702操作范围之内的卡片) */
+ 219          /* STD(监测在FM1702操作范围之内处于HALT状态的卡片) */
+ 220          /*输出: FM1702_NOTAGERR: 无卡*/
+ 221          /* FM1702_OK: 应答正确*/
+ 222          /* FM1702_REQERR: 应答错误*/
+ 223          /****************************************************************/
+ 224          uchar Request(uchar mode)
+ 225          {	
+ 226   1      	unsigned char temp;	
+ 227   1      
+ 228   1      	RevBuffer[0] = mode;
+ 229   1      	SPIWrite(0x11,0x58);//关发射控制
+ 230   1      	SPIWrite(0x11,0x5b);//开发射控制
+ 231   1      
+ 232   1      	SPIWrite(0x0f,0x07);          //address 0FH  调整位的帧格式	
+ 233   1      	temp = SPIRead(0x09);
+ 234   1          temp&=0xf7;
+ 235   1      	SPIWrite(0x09,temp);
+ 236   1      	SPIWrite(0x22,0x03);
+ 237   1      	temp = Command_Send(1, RevBuffer, Transceive);
+ 238   1      	if(temp == FALSE)
+ 239   1      	return (1);	
+ 240   1      	Read_FIFO(RevBuffer);    //读取FIFO里面的数据及数据长度	
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 5   
+
+ 241   1      	temp = Judge_Req(RevBuffer); //对卡片复位应答信号的判断返回值是否正确
+ 242   1      	if(temp == 1)
+ 243   1      	return (0);							
+ 244   1      	return (1);
+ 245   1      
+ 246   1      }
+ 247          
+ 248          /****************************************************************/
+ 249          /*名称: Command_Send */
+ 250          /*功能: 该函数实现向FM1702发送命令集的功能*/
+ 251          /*输入: count, 待发送命令集的长度*/
+ 252          /* buff, 指向待发送数据的指针*/
+ 253          /* Comm_Set, 命令码*/
+ 254          /*输出: TRUE, 命令被正确执行*/
+ 255          /* FALSE, 命令执行错误*/
+ 256          /****************************************************************/
+ 257          uchar Command_Send(uchar count, uchar *buff, uchar Comm_Set)
+ 258          {
+ 259   1      	uint		j;
+ 260   1      	uchar  temp;
+ 261   1      	
+ 262   1      	SPIWrite(Command,0x00);
+ 263   1      	Clear_FIFO();
+ 264   1      	Write_FIFO(count, buff);   //把26H写入FIFO
+ 265   1      
+ 266   1      	
+ 267   1      	SPIWrite(Command,Comm_Set);		/* 命令执行 */
+ 268   1      	for(j = 0; j < RF_TimeOut; j++) /* 检查命令执行否 */
+ 269   1      	{
+ 270   2      		temp = SPIRead(Command);
+ 271   2      		if(temp == 0x00)//如果TEMP为真执行IF语句，否则退出IF语句
+ 272   2      		{
+ 273   3      			return TRUE;//退出FOR语句（带参数返回）
+ 274   3      		}
+ 275   2      	}
+ 276   1      	return FALSE;
+ 277   1      }
+ 278          
+ 279          
+ 280          /****************************************************************/
+ 281          /*名称: Clear_FIFO */
+ 282          /*功能: 该函数实现清空FM1702中FIFO的数据*/
+ 283          /*输入: N/A */
+ 284          /*输出: TRUE, FIFO被清空*/
+ 285          /* FALSE, FIFO未被清空*/
+ 286          /****************************************************************/
+ 287          uchar Clear_FIFO(void)
+ 288          {
+ 289   1      	uchar	temp;
+ 290   1      	uint	i;
+ 291   1      	temp = SPIRead(Control);			/* 清空FIFO */
+ 292   1      	temp = (temp | 0x01);
+ 293   1      	SPIWrite(Control,temp);
+ 294   1      	for(i = 0; i < RF_TimeOut; i++) /* 检查FIFO是否被清空 */
+ 295   1      	{
+ 296   2      		temp = SPIRead(FIFO_Length);
+ 297   2      		if(temp == 0)
+ 298   2      		{
+ 299   3      			return TRUE;
+ 300   3      		}
+ 301   2      	}
+ 302   1      	return FALSE;
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 6   
+
+ 303   1      }
+ 304          
+ 305          
+ 306          /****************************************************************/
+ 307          /*名称: Write_FIFO */
+ 308          /*功能: 该函数实现向FM1702的FIFO中写入x bytes数据*/
+ 309          /*输入: count, 待写入字节的长度*/
+ 310          /* buff, 指向待写入数据的指针*/
+ 311          /*输出: N/A */
+ 312          /****************************************************************/
+ 313          void Write_FIFO(uchar count, uchar *buff)
+ 314          {
+ 315   1      	uchar	i;	
+ 316   1      	for(i = 0; i < count; i++)
+ 317   1      	{
+ 318   2      		SPIWrite(FIFO,*(buff + i));
+ 319   2      	}
+ 320   1      }
+ 321          
+ 322          /****************************************************************/
+ 323          /*名称: Read_FIFO */
+ 324          /*功能: 该函数实现从FM1702的FIFO中读出x bytes数据*/
+ 325          /*输入: buff, 指向读出数据的指针*/
+ 326          /*输出: N/A */
+ 327          /****************************************************************/
+ 328          uchar Read_FIFO(uchar *buff)
+ 329          {
+ 330   1      	uchar	temp;
+ 331   1      	uchar	i;
+ 332   1      	
+ 333   1      	temp = SPIRead(FIFO_Length);//读取FIFO里有多少字节。
+ 334   1      	if(temp == 0)
+ 335   1      	{
+ 336   2      		return 0;
+ 337   2      	}
+ 338   1      
+ 339   1      	if(temp >= 24)		
+ 340   1      	{
+ 341   2      	
+ 342   2      		temp = 24;	
+ 343   2      	}
+ 344   1      
+ 345   1      	for(i = 0; i < temp; i++)
+ 346   1      	{
+ 347   2      		*(buff + i) = SPIRead(FIFO);//读取FIFO里面的数据放在指针处
+ 348   2      	}
+ 349   1      
+ 350   1      	return temp;
+ 351   1      }
+ 352          
+ 353          
+ 354          /****************************************************************/
+ 355          /*名称: Judge_Req */
+ 356          /*功能: 该函数实现对卡片复位应答信号的判断*/
+ 357          /*输入: *buff, 指向应答数据的指针*/
+ 358          /*输出: TRUE, 卡片应答信号正确*/
+ 359          /* FALSE, 卡片应答信号错误*/
+ 360          /****************************************************************/
+ 361          uchar Judge_Req(uchar  *buff)
+ 362          {	
+ 363   1      	uchar	temp1, temp2;	
+ 364   1      	temp1 = *buff;
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 7   
+
+ 365   1      	temp2 = *(buff + 1);
+ 366   1      	if((temp1 == 0x02) || (temp1 == 0x04) || (temp1 == 0x05) || (temp1 == 0x53) || (temp1 == 0x03))
+ 367   1      	{                        //以上为或运算，只要有一条件为真，则运行IF语句。
+ 368   2      		if (temp2 == 0x00)   //否则退出IF语句
+ 369   2      		{
+ 370   3      			return TRUE;
+ 371   3      		}
+ 372   2      	}
+ 373   1      	return FALSE;
+ 374   1      }
+ 375          
+ 376          /****************************************************************/
+ 377          /*名称: AntiColl */
+ 378          /*功能: 该函数实现对放入FM1702操作范围之内的卡片的防冲突检测*/
+ 379          /*输入: N/A */
+ 380          /*输出: FM1702_NOTAGERR: 无卡*/
+ 381          /* FM1702_BYTECOUNTERR: 接收字节错误*/
+ 382          /* FM1702_SERNRERR: 卡片序列号应答错误*/
+ 383          /* FM1702_OK: 卡片应答正确*/
+ 384          /****************************************************************/
+ 385          uchar AntiColl()
+ 386          {
+ 387   1      	unsigned char	temp;
+ 388   1      	unsigned char	i;
+ 389   1      	RevBuffer[0] = RF_CMD_ANTICOL;    //写寻卡通讯命令93H
+ 390   1      	RevBuffer[1] = 0x20;              //写寻卡通讯命令20H
+ 391   1      	SPIWrite(0x22,0x03); //address 22H  选择数据校验种类和类型
+ 392   1      	temp = Command_Send(2, RevBuffer, Transceive);//Transceive=0X1E命令
+ 393   1      	while(1)
+ 394   1      	{
+ 395   2      		if(temp == FALSE)
+ 396   2      		{
+ 397   3      			return(1);   //无卡
+ 398   3      		}	  
+ 399   2      		temp = SPIRead(0x04);   //读0x04里的返回卡号长度
+ 400   2      		if(temp == 0)
+ 401   2      		{
+ 402   3      			return FM1702_BYTECOUNTERR; //接收字节长度错误
+ 403   3      		}
+ 404   2      		Read_FIFO(RevBuffer);           //读取卡号  					
+ 405   2      		for(i = 0; i < temp; i++)
+ 406   2      		{
+ 407   3      			UID[i] = RevBuffer[i]; //把临时寄存器中的卡号放在UID专用寄存器中
+ 408   3      		}		
+ 409   2      		temp = Check_UID();			/* 校验收到的UID */
+ 410   2      		if(temp == FALSE)
+ 411   2      		{
+ 412   3      			return(FM1702_SERNRERR);
+ 413   3      		}
+ 414   2      		return(0);
+ 415   2      	}
+ 416   1      		return(0);
+ 417   1      
+ 418   1      
+ 419   1      }
+ 420          
+ 421          /****************************************************************/
+ 422          /*名称: Check_UID */
+ 423          /*功能: 该函数实现对收到的卡片的序列号的判断*/
+ 424          /*输入: N/A */
+ 425          /*输出: TRUE: 序列号正确*/
+ 426          /* FALSE: 序列号错误*/
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 8   
+
+ 427          /****************************************************************/
+ 428          uchar Check_UID()
+ 429          {
+ 430   1      	
+ 431   1      	uchar	temp;
+ 432   1      	uchar	i;
+ 433   1      	
+ 434   1      	temp = 0x00;
+ 435   1      	for(i = 0; i < 5; i++)
+ 436   1      	{
+ 437   2      		temp = temp ^ UID[i];//对卡号异或运算，即二数相同为0，不同为1
+ 438   2      	}						//正确结果为0
+ 439   1      
+ 440   1      	if(temp == 0)
+ 441   1      	{
+ 442   2      		return TRUE;
+ 443   2      	}
+ 444   1      
+ 445   1      	return FALSE;
+ 446   1      }
+ 447          
+ 448          /****************************************************************/
+ 449          /*名称: Select_Card */
+ 450          /*功能: 该函数实现对放入FM1702操作范围之内的某张卡片进行选择*/
+ 451          /*输入: N/A */
+ 452          /*输出: FM1702_NOTAGERR: 无卡*/
+ 453          /* FM1702_PARITYERR: 奇偶校验错*/
+ 454          /* FM1702_CRCERR: CRC校验错*/
+ 455          /* FM1702_BYTECOUNTERR: 接收字节错误*/
+ 456          /* FM1702_OK: 应答正确*/
+ 457          /* FM1702_SELERR: 选卡出错*/
+ 458          /****************************************************************/
+ 459          uchar Select_Card()
+ 460          {
+ 461   1      	unsigned char	temp, i;	
+ 462   1      
+ 463   1      	RevBuffer[0] = RF_CMD_SELECT;//写0x93命令时关闭发送以及接收CRC校验以及开启奇校验
+ 464   1      	RevBuffer[1] = 0x70; //当发送PICC_REQSTD 命令时RegBitFraming 要装入0x07
+ 465   1      	for(i = 0; i < 5; i++)
+ 466   1      	{
+ 467   2      		RevBuffer[i + 2] = UID[i];  //把5个卡序列号转放入缓冲区
+ 468   2      	}
+ 469   1      	SPIWrite(0x22,0x0f);//选择数据校验的种类和模式	
+ 470   1      	temp = Command_Send(7, RevBuffer, Transceive);//Transceive=1EH（接收命令）
+ 471   1      	if(temp == FALSE)			
+ 472   1      	{
+ 473   2      		return(1);
+ 474   2      	}
+ 475   1      	else
+ 476   1      	{
+ 477   2      		Read_FIFO(RevBuffer);	/* 从FIFO中读取应答信息, 读取卡片容量*/
+ 478   2      		temp = *RevBuffer;			//返回卡片容量S50卡:08,S70卡:18
+ 479   2      
+ 480   2      		if((temp == 0x18) || (temp == 0x08) || (temp == 0x28) || (temp == 0x53))	/* 判断应答信号是否正确 */
+ 481   2      			return(0);
+ 482   2      		else
+ 483   2      			return(FM1702_SELERR);
+ 484   2      	}
+ 485   1      }
+ 486          
+ 487          /****************************************************************/
+ 488          /*名称: Load_keyE */
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 9   
+
+ 489          /*功能: 该函数实现把E2中密码存入FM1702的keyRevBuffer中*/
+ 490          /*输入: Secnr: EE起始地址*/
+ 491          /*输出: True: 密钥装载成功*/
+ 492          /* False: 密钥装载失败*/
+ 493          /****************************************************************/
+ 494          uchar Load_key_CPY(uchar *buff)
+ 495          {
+ 496   1      	char  status;
+ 497   1          uchar coded_keys[12];
+ 498   1      	uchar	temp;
+ 499   1      	M500HostCodeKey(buff,coded_keys);////////////////	
+ 500   1      	temp=Command_Send(0x0c,coded_keys,LoadKey);/* LoadKey将密钥从FIFO缓存复制到KEY缓存 0x19*/
+ 501   1      	if(temp == FALSE)       //0x0c为12个字节长度 //coded_keys为指向地址寄存器
+ 502   1      	{
+ 503   2      		return FM1702_LOADKEYERR;
+ 504   2      	}
+ 505   1      
+ 506   1      	status=(SPIRead(ErrorFlag)) & 0x40;//判断loadkey执行是否正确
+ 507   1      	if (status==0x40)
+ 508   1          return FM1702_AUTHERR;
+ 509   1          return FM1702_OK;
+ 510   1      }
+ 511          
+ 512          
+ 513          // 转换密钥格式
+ 514          ///////////////////////////////////////////////////////////////////////
+ 515          char M500HostCodeKey(  uchar *uncoded, uchar *coded)   
+ 516          {
+ 517   1          uchar cnt = 0;
+ 518   1          uchar ln  = 0;     
+ 519   1          uchar  hn  = 0;      
+ 520   1          for (cnt = 0; cnt < 6; cnt++)
+ 521   1          {
+ 522   2              ln = uncoded[cnt] & 0x0F;
+ 523   2              hn = uncoded[cnt] >> 4;
+ 524   2              coded[cnt * 2 + 1] = (~ln << 4) | ln;
+ 525   2              coded[cnt * 2 ] = (~hn << 4) | hn;
+ 526   2          }
+ 527   1          return 0;
+ 528   1      }
+ 529          
+ 530          
+ 531          /****************************************************************/
+ 532          /*名称: Authentication */
+ 533          /*功能: 该函数实现密码认证的过程*/
+ 534          /*输入: UID: 卡片序列号地址*/
+ 535          /* SecNR: 扇区号*/
+ 536          /*输出: FM1702_NOTAGERR: 无卡*/
+ 537          /* FM1702_PARITYERR: 奇偶校验错*/
+ 538          /* FM1702_CRCERR: CRC校验错*/
+ 539          /* FM1702_OK: 应答正确*/
+ 540          /* FM1702_AUTHERR: 权威认证有错*/
+ 541          /****************************************************************/
+ 542          uchar Authentication(uchar *UID, uchar SecNR)
+ 543          {	
+ 544   1      	unsigned char i;
+ 545   1      	unsigned char temp, temp1;	
+ 546   1      	RevBuffer[0] = RF_CMD_AUTH_LA;   //密码A   
+ 547   1      	RevBuffer[1] = SecNR;  
+ 548   1      	for(i = 0; i < 4; i++)
+ 549   1      	RevBuffer[2 + i] = UID[i];//把序列号放入缓冲区是否为同一张卡	  
+ 550   1      	SPIWrite(0x22,0x0f);  //否则验证不通过
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 10  
+
+ 551   1      
+ 552   1      //************ Authent1=0x0c 验证命令认证过程第1步 ****************//	
+ 553   1      	temp = Command_Send(6, RevBuffer, Authent1);
+ 554   1      	if(temp == FALSE)   			
+ 555   1      	return FM1702_AUTHERR;	
+ 556   1      
+ 557   1      //************ Authent2=0x14 验证命令认证过程第2步 ****************//
+ 558   1      	temp = Command_Send(0, RevBuffer, Authent2);//如果密码错则第二步不通过
+ 559   1      	if(temp == FALSE)			
+ 560   1      	return FM1702_AUTHERR;
+ 561   1      	temp1 = SPIRead(0x09);//读控制标识寄存器为0X08时表示加密单元打开，
+ 562   1      	temp1 = temp1 & 0x08;	//通过后该位内部置1 （CRYPTO1ON）
+ 563   1      	if(temp1 == 0x08)
+ 564   1      	return (0);
+ 565   1      	return FM1702_AUTHERR;
+ 566   1      }
+ 567          
+ 568          
+ 569          /****************************************************************/
+ 570          /*名称: MIF_Read */
+ 571          /*功能: 该函数实现读MIFARE卡块的数值*/
+ 572          /*输入: buff: 缓冲区首地址*/
+ 573          /* Block_Adr: 块地址*/
+ 574          /*输出: FM1702_NOTAGERR: 无卡*/
+ 575          /* FM1702_PARITYERR: 奇偶校验错*/
+ 576          /* FM1702_CRCERR: CRC校验错*/
+ 577          /* FM1702_BYTECOUNTERR: 接收字节错误*/
+ 578          /* FM1702_OK: 应答正确*/
+ 579          /****************************************************************/
+ 580          uchar MIF_READ(uchar *buff, uchar Block_Adr)
+ 581          {
+ 582   1      	unsigned char temp;
+ 583   1      	SPIWrite(0x22,0x0f);
+ 584   1      	buff[0] = RF_CMD_READ;   //0x30
+ 585   1      	buff[1] = Block_Adr;
+ 586   1      	temp = Command_Send(2, buff, Transceive);
+ 587   1      	if(temp == 0)
+ 588   1      	{			
+ 589   2      
+ 590   2      		return (1);
+ 591   2      	}
+ 592   1      
+ 593   1      	temp = SPIRead(0x04);
+ 594   1      	if(temp == 0x10)	
+ 595   1      	{
+ 596   2      		Read_FIFO(buff);
+ 597   2      
+ 598   2      		return (0);
+ 599   2      	}
+ 600   1      
+ 601   1      	return (1);
+ 602   1      }
+ 603          
+ 604          
+ 605          /****************************************************************/
+ 606          /*名称: MIF_Write */
+ 607          /*功能: 该函数实现写MIFARE卡块的数值*/
+ 608          /*输入: buff: 缓冲区首地址*/
+ 609          /* Block_Adr: 块地址*/
+ 610          /*输出: FM1702_NOTAGERR: 无卡*/
+ 611          /* FM1702_BYTECOUNTERR: 接收字节错误*/
+ 612          /* FM1702_NOTAUTHERR: 未经权威认证*/
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 11  
+
+ 613          /* FM1702_EMPTY: 数据溢出错误*/
+ 614          /* FM1702_CRCERR: CRC校验错*/
+ 615          /* FM1702_PARITYERR: 奇偶校验错*/
+ 616          /* FM1702_WRITEERR: 写卡块数据出错*/
+ 617          /* FM1702_OK: 应答正确*/
+ 618          /****************************************************************/
+ 619          uchar MIF_Write(uchar *buff, uchar Block_Adr)
+ 620          {
+ 621   1      	unsigned char	temp;
+ 622   1      	unsigned char	*F_buff;
+ 623   1      
+ 624   1      	SPIWrite(0x23,0x63);
+ 625   1      	SPIWrite(0x12,0x3f);
+ 626   1      	F_buff = buff + 0x10;
+ 627   1      	SPIWrite(0x22,0x07);    /* Note: this line is for 1702, different from RC500*/
+ 628   1      	*F_buff = RF_CMD_WRITE;
+ 629   1      	*(F_buff + 1) = Block_Adr;
+ 630   1      	temp = Command_Send(2, F_buff, Transceive);
+ 631   1      	if(temp == FALSE)
+ 632   1      	{
+ 633   2      		return(1);
+ 634   2      	}
+ 635   1      
+ 636   1      	temp = SPIRead(0x04);
+ 637   1      	if(temp == 0)
+ 638   1      	{
+ 639   2      		return(FM1702_BYTECOUNTERR);
+ 640   2      	}
+ 641   1      
+ 642   1      	Read_FIFO(F_buff);
+ 643   1      	temp = *F_buff;
+ 644   1      	switch(temp)
+ 645   1      	{
+ 646   2      	case 0x00:	return(FM1702_NOTAUTHERR);	
+ 647   2      	case 0x04:	return(FM1702_EMPTY);
+ 648   2      	case 0x0a:	break;
+ 649   2      	case 0x01:	return(FM1702_CRCERR);
+ 650   2      	case 0x05:	return(FM1702_PARITYERR);
+ 651   2      	default:	return(FM1702_WRITEERR);
+ 652   2      	}
+ 653   1      
+ 654   1      	temp = Command_Send(16, buff, Transceive);
+ 655   1      	if(temp == TRUE)
+ 656   1      	{
+ 657   2      		return(0);
+ 658   2      	}
+ 659   1      	else
+ 660   1      	{
+ 661   2      		temp = SPIRead(0x0a);
+ 662   2      		if((temp & 0x02) == 0x02)
+ 663   2      			return(FM1702_PARITYERR);
+ 664   2      		else if((temp & 0x04) == 0x04)
+ 665   2      			return(FM1702_FRAMINGERR);
+ 666   2      		else if((temp & 0x08) == 0x08)
+ 667   2      			return(FM1702_CRCERR);
+ 668   2      		else
+ 669   2      			return(FM1702_WRITEERR);
+ 670   2      	}
+ 671   1      }
+ 672          
+ 673          
+ 674          /****************************************************************/
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 12  
+
+ 675          /*名称: Read_E2 */
+ 676          /*功能: 该函数实现从FM1702的EE中读出数据*/
+ 677          /*输入: lsb, EE地址(低字节) */
+ 678          /* msb, EE地址(高字节) */
+ 679          /* count, 待读出数据EE的字节个数*/
+ 680          /* buff, 指向待读出数据的指针*/
+ 681          /*输出: TRUE, EE数据正确读出*/
+ 682          /* FALSE, EE数据读出有误*/
+ 683          /****************************************************************/
+ 684          uchar Read_E2(uchar lsb, uchar msb, uchar count, uchar *buff)
+ 685          {
+ 686   1      	
+ 687   1      	uchar	temp;
+ 688   1      	
+ 689   1      	*buff = lsb;
+ 690   1      	*(buff + 1) = msb;
+ 691   1      	*(buff + 2) = count;
+ 692   1      	temp = Command_Send(3, buff, ReadE2);
+ 693   1      	Read_FIFO(buff);
+ 694   1      	if(temp != FALSE) 
+ 695   1      	return(TRUE);
+ 696   1      	return(FALSE);
+ 697   1      }
+ 698          
+ 699          /****************************************************************/
+ 700          /*名称: Write_E2 */
+ 701          /*功能: 该函数实现向FM1702的EE中写入数据*/
+ 702          /*输入: lsb, EE地址(低字节) */
+ 703          /* msb, EE地址(高字节) */
+ 704          /* count, 待写入数据EE的字节个数*/
+ 705          /* buff, 指向待写入数据的指针*/
+ 706          /*输出: TRUE, EE数据正确写入*/
+ 707          /* FALSE, EE数据写入有误*/
+ 708          /****************************************************************/
+ 709          uchar Write_E2( uchar lsb,uchar msb,uchar count, uchar *buff)
+ 710          {
+ 711   1      	uchar temp, i;
+ 712   1      	for(i = 0; i < count; i++)
+ 713   1      	{
+ 714   2      		*(buff + count - i + 1) = *(buff - i + count);//指向长的高位，拷贝数值，结果后推2BYTE
+ 715   2      	}
+ 716   1      
+ 717   1      	*buff =lsb;
+ 718   1      	*(buff+1) =msb; 
+ 719   1      	temp = Command_Send(count + 2, buff, WriteE2);
+ 720   1       	if(temp != TRUE)
+ 721   1      	{
+ 722   2      		return FALSE;
+ 723   2      	}
+ 724   1      
+ 725   1      	temp = SPIRead(SecondaryStatus);
+ 726   1      	temp = temp & 0x40;
+ 727   1      	if(temp == 0x40)//等于0X40是表示E2擦写过程结束
+ 728   1      	{
+ 729   2      		SPIWrite(Command,0x00);			//added 2006/03/15
+ 730   2      		return TRUE;
+ 731   2      	}
+ 732   1      
+ 733   1      	return FALSE;
+ 734   1      }
+ 735          
+ 736          
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 13  
+
+ 737          void keyto()//A密码的加密格式：00 4个字节的序列号 块号（扇区号），共6个字节的密钥
+ 738          {
+ 739   1      
+ 740   1      	unsigned char i;
+ 741   1      
+ 742   1      	RevBuffer[4]=block_numset(3);
+ 743   1      	for(i = 0; i < 7; i++)
+ 744   1      	RevBuffer[5 + i] = 0xff;		//默认密码
+ 745   1      	
+ 746   1      }	
+ 747          
+ 748          
+ 749          uchar block_numset(uchar block_num)
+ 750          { 	
+ 751   1      	unsigned char temp,i;
+ 752   1      	i=m1erea;
+ 753   1      	temp=block_num;
+ 754   1      	while(i)
+ 755   1      	{
+ 756   2      		temp=temp+4;
+ 757   2      		i--;
+ 758   2      	}
+ 759   1      	return temp;
+ 760   1      }
+ 761          
+ 762          
+ 763          
+ 764          
+ 765          
+ 766          ///////////////////////////////////////////////////////
+ 767          //////////////////////////////////////////////////////
+ 768          void init()
+ 769          {
+ 770   1      
+ 771   1          	TMOD=0x21;		   //设T0为方式1，GATE=1；
+ 772   1      		SCON=0x50;
+ 773   1      		TH1=0xFD;
+ 774   1      		TL1=0xFD;
+ 775   1      		TH0=0;
+ 776   1      		TL0=0; 
+ 777   1      		TR0=1;  
+ 778   1      		ET0=1;             //允许T0中断
+ 779   1      		TR1=1;			   //开启定时器
+ 780   1      		TI=1;
+ 781   1      		EA=1;			   	//开启总中断
+ 782   1      		
+ 783   1      ES = 1;
+ 784   1      RI = 1;
+ 785   1      
+ 786   1      
+ 787   1      
+ 788   1      
+ 789   1      
+ 790   1      
+ 791   1      
+ 792   1      
+ 793   1      		P0=0xff;
+ 794   1      }
+ 795          
+ 796          
+ 797          void delay(unsigned int  x)
+ 798          {
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 14  
+
+ 799   1       	unsigned char k;
+ 800   1         	while(x--)                      //延时大约x毫秒钟
+ 801   1         	{
+ 802   2           	for(k=0;k<125;k++);
+ 803   2      	}
+ 804   1      }
+ 805          
+ 806          
+ 807          
+ 808          
+ 809          void displayUid()
+ 810          {
+ 811   1      		WriteCommand(0x93);
+ 812   1      		LCD_Data(UID[0]); //4个字节的序列号
+ 813   1      		WriteCommand(0x94);
+ 814   1      		LCD_Data(UID[1]); 
+ 815   1      		WriteCommand(0x95);
+ 816   1      		LCD_Data(UID[2]); 
+ 817   1      		WriteCommand(0x96);
+ 818   1      		LCD_Data(UID[3]); 
+ 819   1      
+ 820   1      }
+ 821          
+ 822          void setpay(uint ctime12)
+ 823          {
+ 824   1      	lcd[4]=ctime12/10000;//一些十进制的转换  65535
+ 825   1      	lcd[3]=ctime12%10000/1000;
+ 826   1      	lcd[2]=ctime12%1000/100;
+ 827   1      
+ 828   1      	lcd[1]=ctime12%100/10;
+ 829   1      	lcd[0]=ctime12%10;
+ 830   1      
+ 831   1      	lcd[3]<<=4;
+ 832   1      	lcd[3]=	lcd[3]+	lcd[2];
+ 833   1      
+ 834   1      	lcd[1]<<=4;
+ 835   1      	lcd[1]=	lcd[1]+	lcd[0];
+ 836   1      
+ 837   1      	
+ 838   1      }
+ 839          
+ 840          
+ 841          unsigned char Card_Mun()
+ 842          {
+ 843   1      	unsigned char st,i,temp;
+ 844   1      	st= AntiColl();
+ 845   1      	if(st!=0)				 
+ 846   1          return (1);
+ 847   1      	
+ 848   1      	st=Select_Card();  //选择卡片
+ 849   1      	if(st!=0)
+ 850   1          return (1);
+ 851   1       
+ 852   1      
+ 853   1      
+ 854   1      					DispalyLcd();
+ 855   1      					displayUid();
+ 856   1      					beep=0;
+ 857   1      					led=0;
+ 858   1      					delay(100);
+ 859   1      					beep=1;
+ 860   1      					led=1;
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 15  
+
+ 861   1      
+ 862   1      
+ 863   1      
+ 864   1      
+ 865   1      
+ 866   1      
+ 867   1      
+ 868   1      
+ 869   1      	keyto();
+ 870   1      	st = Load_key_CPY(&RevBuffer[5]);
+ 871   1      	if(st!=0)
+ 872   1          return (1);	
+ 873   1      		       
+ 874   1      	st = Authentication(UID, RevBuffer[4]);
+ 875   1      	if(st!=0)
+ 876   1          return (2);
+ 877   1      
+ 878   1      	return (0);
+ 879   1      }
+*** WARNING C280 IN LINE 843 OF .\FM1702.C: 'i': unreferenced local variable
+*** WARNING C280 IN LINE 843 OF .\FM1702.C: 'temp': unreferenced local variable
+ 880          
+ 881          
+ 882          void main()
+ 883          {
+ 884   1      	uchar secNR;
+ 885   1      	uchar i;
+ 886   1      	uchar lsb;
+ 887   1      	uchar msb;
+ 888   1      	uchar count;
+ 889   1      	uchar stauts;
+ 890   1      	int temp;
+ 891   1      
+ 892   1        	init();
+ 893   1      	initial_LCD(); //显示屏初始化
+ 894   1      	DispalyLcd_RF();
+*** WARNING C206 IN LINE 894 OF .\FM1702.C: 'DispalyLcd_RF': missing function-prototype
+ 895   1      	printf("--------------------------------------------\n");
+ 896   1      	printf("--------------------------------------------\n");
+ 897   1      	printf("--------广州恒天单片机射频卡测试实验--------\n");
+ 898   1      	printf("---------------    请刷卡!    --------------\n");
+ 899   1      	printf("--------------------------------------------\n");
+ 900   1      	printf("--------------------------------------------\n");
+ 901   1      	while(1)
+ 902   1      	{
+ 903   2      			Init_FM1702();
+ 904   2      			WriteCommand(0x01);  //清屏
+ 905   2      			DispalyLcd_home();
+*** WARNING C206 IN LINE 905 OF .\FM1702.C: 'DispalyLcd_home': missing function-prototype
+ 906   2      			while (1)
+ 907   2      		   {
+ 908   3      				
+ 909   3      					do
+ 910   3      					{
+ 911   4      
+ 912   4      							for(i=0;i<4;i++)
+ 913   4      							{
+ 914   5      								delay(100);
+ 915   5      								if(i==0)
+ 916   5      								{
+ 917   6      									dis_Request1();//dis()
+ 918   6      									stauts = Request(RF_CMD_REQUEST_STD);
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 16  
+
+ 919   6      									if(stauts==0)
+ 920   6      									{break;}
+ 921   6      								}
+ 922   5      								if(i==1)
+ 923   5      								{
+ 924   6      									dis_Request2();//dis(())
+ 925   6      									stauts = Request(RF_CMD_REQUEST_STD);
+ 926   6      									if(stauts==0)
+ 927   6      									{break;}								
+ 928   6      								}
+ 929   5      								if(i==2)
+ 930   5      								{
+ 931   6      									dis_Request3();//dis((()))
+ 932   6      									stauts = Request(RF_CMD_REQUEST_STD);
+ 933   6      									if(stauts==0)
+ 934   6      									{break;}
+ 935   6      								}
+ 936   5      								if(i==3)
+ 937   5      								{
+ 938   6      									DispalyLcd1();//清dis((()))
+*** WARNING C206 IN LINE 938 OF .\FM1702.C: 'DispalyLcd1': missing function-prototype
+ 939   6      									stauts = Request(RF_CMD_REQUEST_STD);
+ 940   6      									if(stauts==0)
+ 941   6      									{break;}
+ 942   6      								}
+ 943   5      								
+ 944   5      							}
+ 945   4      
+ 946   4      					}while(stauts);
+ 947   3      		
+ 948   3      				
+ 949   3      					stauts=Card_Mun();//读取卡号	
+ 950   3      					if(stauts!=0)
+ 951   3      					{
+ 952   4      						if(stauts==2)
+ 953   4      						{
+ 954   5      							dis_passerror();
+*** WARNING C206 IN LINE 954 OF .\FM1702.C: 'dis_passerror': missing function-prototype
+ 955   5      							do{stauts = Request(RF_CMD_REQUEST_STD); }
+ 956   5      							while(!stauts);
+ 957   5      						}
+ 958   4      
+ 959   4      						break;	//返回的值错误则退出
+ 960   4      					}
+ 961   3      
+ 962   3      				/////读数据块的操作///////////
+ 963   3      				secNR=block_numset(1);      //操作数据块1
+ 964   3      				stauts=MIF_READ(RevBuffer,secNR);  //读出数据块0的数据放在RevBuffer里面
+ 965   3      				if(stauts!=0)
+ 966   3      				break;	//返回的值错误则退出
+ 967   3      				///////////////////////////////
+ 968   3      
+ 969   3      		
+ 970   3      		
+ 971   3      				ctimeH=RevBuffer[2];//卡内块0中的第一个字节为金额高位
+ 972   3      				ctimeL=RevBuffer[3];//卡内块0中的第二个字节为金额低位
+ 973   3      
+ 974   3      				ctime=ctimeH;//操作金额的格式转换
+ 975   3      				ctime<<=8;
+ 976   3      				ctime=ctime+ctimeL;
+ 977   3      				
+ 978   3      	
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 17  
+
+ 979   3      				ctime=ctime-pay;//每刷一次卡扣掉卡内5元，pay为存放要扣金额的值
+ 980   3      				cctime=ctime;	
+ 981   3      
+ 982   3      
+ 983   3      				RevBuffer[3]=ctime;//把低字节写入缓存器中
+ 984   3      				ctime=ctime&0xff00;	
+ 985   3      				ctime>>=8;
+ 986   3      				RevBuffer[2]=ctime;//把高字节写入缓存器中
+ 987   3      		
+ 988   3      
+ 989   3      
+ 990   3      
+ 991   3      				/////写数据块的操作////////////
+ 992   3      				secNR=block_numset(1);      //操作数据块1
+ 993   3      				stauts=MIF_Write(RevBuffer,secNR); //写块
+ 994   3      				if(stauts!=0)
+ 995   3      				break;	//返回的值错误则退出
+ 996   3      				///////////////////////////////
+ 997   3      		
+ 998   3      
+ 999   3      		
+1000   3      		
+1001   3      		
+1002   3      				/////扣完款之后把卡余额写回卡的块0中后在显示屏显示出卡余额 ////
+1003   3      				setpay(pay);	//显示消费的金额
+1004   3      				displaymun(0x8b,0x8c,0x8e,0x8d,0x8f,lcd[4],lcd[3],lcd[1]);
+1005   3      		
+1006   3      				setpay(cctime);	//显示卡余额
+1007   3      				displaymun(0x9b,0x9c,0x9e,0x9d,0x9f,lcd[4],lcd[3],lcd[1]);//前5个字节为要显示的12864地址，后三个字节为
+             -显示的金额值 
+1008   3      				/////////////////////////////////////////////////////////////
+1009   3      				beep=0;
+1010   3      				led=0;
+1011   3      				delay(100);
+1012   3      				beep=1;
+1013   3      				led=1;
+1014   3      				delay(100);
+1015   3      				beep=0;
+1016   3      				led=0;
+1017   3      				delay(100);
+1018   3      				beep=1;
+1019   3      				led=1;
+1020   3      
+1021   3      
+1022   3      		
+1023   3      				do{stauts = Request(RF_CMD_REQUEST_STD); }//扣款成功后等待把卡移开感应区
+1024   3      				while(!stauts);
+1025   3      				WriteCommand(0x01);  //清屏
+1026   3      				DispalyLcd_home();
+1027   3      				  
+1028   3      
+1029   3      			/////以下是对FM1702内部存储器的操作,可把一些重要数据存在里面而掉电不丢失///////
+1030   3      			
+1031   3      		/*
+1032   3      				////////////////写数据到1702的芯片内部E2PROM的地址里面/////////////////////
+1033   3      				lsb=0x50;		//1702的芯片内部E2PROM的地址:0x0050
+1034   3      				msb=0;		
+1035   3      				RevBuffer[0]=0xa1;
+1036   3      				RevBuffer[1]=0xb2;
+1037   3      				RevBuffer[2]=0xc3;
+1038   3      				RevBuffer[3]=0xd4;
+1039   3      				count=4;		//待写入数据EE的字节个数//		
+C51 COMPILER V6.12  FM1702                                                                 06/24/2012 14:07:23 PAGE 18  
+
+1040   3      				Write_E2(lsb,msb, count, RevBuffer);
+1041   3      				delay(200);
+1042   3      				////////////////////////////////////////////////////////////////////////////
+1043   3      		
+1044   3      		
+1045   3      				////////////////读1702的芯片内部E2PROM的地址里面的数据/////////////////////////////
+1046   3      				lsb=0x50;			//读E2PROM的地址低位
+1047   3      				msb=0x0;			//地址高位
+1048   3      				count=4;			//要读的个数
+1049   3      				Read_E2(lsb, msb, count, RevBuffer);  //读出的数据放在RevBuffer里面
+1050   3      				////////////////////////////////////////////////////////////////////////////////////
+1051   3      		*/
+1052   3      			
+1053   3      		    }
+1054   2      	 }
+1055   1      }
+*** WARNING C280 IN LINE 886 OF .\FM1702.C: 'lsb': unreferenced local variable
+*** WARNING C280 IN LINE 887 OF .\FM1702.C: 'msb': unreferenced local variable
+*** WARNING C280 IN LINE 888 OF .\FM1702.C: 'count': unreferenced local variable
+*** WARNING C280 IN LINE 890 OF .\FM1702.C: 'temp': unreferenced local variable
+1056          
+1057          
+1058          
+1059          
+1060          
+1061          
+1062          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2330    ----
+   CONSTANT SIZE    =    138    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     43      79
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  10 WARNING(S),  0 ERROR(S)

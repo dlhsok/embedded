@@ -1,0 +1,490 @@
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 1   
+
+
+C51 COMPILER V6.12, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN MAIN.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE MAIN.C ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+stmt level    source
+
+   1          #include "reg52.h"
+   2          #include <string.h>
+   3          #include <intrins.h>
+   4          #include "main.h"
+   5          #include "slrc1702.h"
+   6          #include "iso14443a.h"
+*** WARNING C258 IN LINE 29 OF ISO14443A.H: 'auth_mode': mspace on parameter ignored
+*** WARNING C258 IN LINE 29 OF ISO14443A.H: 'keynr': mspace on parameter ignored
+   7          
+   8          
+   9          bit g_bReceOk;                                              //正确接收到上位机指令标志
+  10          bit g_bRc1702Ok;                                             //RC1702复位正常标志
+  11          
+  12          
+  13          unsigned int  g_cReceNum;                                   //接收到上位机的字节数
+  14          unsigned int  data g_cCommand;                              //接收到的命令码
+  15          unsigned char data g_cSNR[4];                               //M1卡序列号
+  16          unsigned char g_cIcdevH;                                    //设备标记
+  17          unsigned char g_cIcdevL;                                    //设备标记
+  18          unsigned char g_cFWI;                                       //
+  19          unsigned char g_cCidNad;                                    //
+  20          unsigned char idata g_cReceBuf[64];                         //和上位机通讯时的缓冲区
+  21          
+  22          struct TranSciveBuffer{unsigned char MfCommand;
+  23                                 unsigned int  MfLength;
+  24                                 unsigned char MfData[64];
+  25                                };
+  26          void main( )
+  27          {    
+  28   1      
+  29   1           InitializeSystem( ); 
+  30   1           Rc1702Ready( );
+  31   1           PcdConfigISOType( 'A' );    
+  32   1           while ( 1 )
+  33   1           { 
+  34   2       
+  35   2               if (g_bReceOk)
+  36   2               {
+  37   3      
+  38   3                       g_bReceOk = 0;
+  39   3      				 g_cCommand=g_cReceBuf[0];     
+  40   3                       switch(g_cCommand)
+  41   3                       {
+  42   4                           case 0x01:
+  43   4                              ComHlta();                   break;            
+  44   4                           case 0x02:
+  45   4                              ComRequestA();               break;  
+  46   4                           case 0x03:
+  47   4                              ComAnticoll();               break;        
+  48   4                           case 0x04:
+  49   4                              ComSelect();                 break;
+  50   4      					 case 0x05:
+  51   4                              ComM500PiccAuthE2();         break;
+  52   4      					 case 0x06:
+  53   4                              ComM500PcdLoadKeyE2();       break;
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 2   
+
+  54   4                           case 0x07:
+  55   4                              ComAuthentication();         break; 
+  56   4                           case 0x08:
+  57   4                              ComM1Read();                 break;
+  58   4                           case 0x09:
+  59   4                              ComM1Write();                break;
+  60   4                           case 0x0A:
+  61   4                              ComM1Decrement();            break;
+  62   4      					 case 0x0B:
+  63   4                              Comsond();                   break;  
+  64   4      					 case 0x0C:    // 参数设置
+  65   4      		               	g_cReceBuf[0]=1;	//contact
+  66   4      		            	g_cReceBuf[1]=0;
+  67   4      			                                         break;		
+  68   4      
+  69   4                       }
+  70   3      				 
+  71   3                }	
+  72   2           }
+  73   1      }
+  74          
+  75          
+  76          
+  77          
+  78          ///////////////////////////////////////////////////////////////////
+  79          //////
+  80          ///////////////////////////////////////////////////////////////////
+  81          void Comsond()
+  82          {
+  83   1      	  	    	g_cReceBuf[0]=1;         //contact
+  84   1      		    	g_cReceBuf[1]=0;
+  85   1      				AnswerOk();		
+  86   1      		    	BELL       = 0;
+  87   1      				led =0;
+  88   1      		    	DelayMs(100);
+  89   1      				led =1;
+  90   1      		    	BELL       = 1;
+  91   1      		
+  92   1      }
+  93          
+  94          
+  95          /////////////////////////////////////////////////////////////////////
+  96          //系统初始化
+  97          /////////////////////////////////////////////////////////////////////
+  98          void InitializeSystem()
+  99          {  
+ 100   1          TMOD &= 0x0F;
+ 101   1          TMOD |= 0x21;
+ 102   1          PCON |= 0x80;
+ 103   1          SCON  = 0x50;
+ 104   1          TH1 = TL1 = BOUND9600; 	  //默认波特率为9600
+ 105   1          TR1=1;
+ 106   1      	
+ 107   1          P0 = P1 = P2 = P3 = 0xFF;
+ 108   1          IE |= 0x90;
+ 109   1      }
+ 110          
+ 111          /////////////////////////////////////////////////////////////////////
+ 112          //初始化fm1702
+ 113          /////////////////////////////////////////////////////////////////////
+ 114          void Rc1702Ready()
+ 115          {
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 3   
+
+ 116   1          char status;
+ 117   1          DelayMs(100);
+ 118   1          DelayMs(100);
+ 119   1      	DelayMs(100);
+ 120   1          DelayMs(100);
+ 121   1          DelayMs(100);
+ 122   1          DelayMs(100);
+ 123   1          DelayMs(100);
+ 124   1      
+ 125   1          status = PcdReset();
+ 126   1          if(status != MI_OK)
+ 127   1          {
+ 128   2              DelayMs(10);
+ 129   2              status = PcdReset();
+ 130   2          } 
+ 131   1          if(status != MI_OK)
+ 132   1          {
+ 133   2              DelayMs(10);
+ 134   2              status = PcdReset();
+ 135   2          } 
+ 136   1          if(status == MI_OK)
+ 137   1          {
+ 138   2              g_bRc1702Ok = 1;
+ 139   2      
+ 140   2              BELL       = 0;                //蜂鸣器响二声，表示fm1702复位成功
+ 141   2      		DelayMs(100);
+ 142   2      		BELL       = 1;
+ 143   2      		DelayMs(200);
+ 144   2              BELL       = 0;                
+ 145   2      		DelayMs(100);
+ 146   2      		BELL       = 1;		
+ 147   2          }       
+ 148   1      }
+ 149          	
+ 150          
+ 151          
+ 152          /////////////////////////////////////////////////////////////////////
+ 153          //响应上位机发送的寻A卡命令
+ 154          /////////////////////////////////////////////////////////////////////
+ 155          void ComRequestA()
+ 156          {
+ 157   1      	char status;
+ 158   1      	status = PcdRequest(g_cReceBuf[1], &g_cReceBuf[2]);
+ 159   1      	if (status != MI_OK)
+ 160   1      	{    status = PcdRequest(g_cReceBuf[1], &g_cReceBuf[2]);   }
+ 161   1          if (status != MI_OK)
+ 162   1      	  {  
+ 163   2      	g_cReceBuf[0]=1;	
+ 164   2      	g_cReceBuf[1]=status; 
+ 165   2      	 AnswerOk(); 
+ 166   2      	 return;   
+ 167   2      	  } 
+ 168   1      
+ 169   1      	  if(g_cReceBuf[2]==2)
+ 170   1      	      g_cCidNad=mifarepro;     // Mifare Pro 卡
+ 171   1      		 else  if(g_cReceBuf[2]==4)
+ 172   1      			  g_cCidNad=mifare1;       // Mifare One 卡
+ 173   1      				else   if(g_cReceBuf[2]==16)
+ 174   1      				       g_cCidNad=mifarelight;   // Mifare Light 卡
+ 175   1      					 else    	g_cCidNad=unknowncard;
+ 176   1      
+ 177   1      			g_cReceBuf[0]=3;	
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 4   
+
+ 178   1      			g_cReceBuf[1]=status;
+ 179   1       
+ 180   1      	
+ 181   1      	 AnswerOk(); 
+ 182   1      
+ 183   1         	
+ 184   1      }
+ 185          
+ 186          /////////////////////////////////////////////////////////////////////
+ 187          //响应上位机发送的A卡防冲撞命令
+ 188          /////////////////////////////////////////////////////////////////////
+ 189          void ComAnticoll()
+ 190          { 
+ 191   1      	char status;
+ 192   1      	status=PcdAnticoll(&g_cSNR);
+ 193   1          if (status!=MI_OK )
+ 194   1          {   
+ 195   2      	 g_cReceBuf[0]=1;	
+ 196   2      	g_cReceBuf[1]=status;
+ 197   2      	 AnswerOk(); 
+ 198   2      	 return;  
+ 199   2      	 }
+ 200   1      	 g_cReceBuf[2]=g_cSNR[0];
+ 201   1      	 g_cReceBuf[3]=g_cSNR[1];
+ 202   1      	 g_cReceBuf[4]=g_cSNR[2];
+ 203   1      	 g_cReceBuf[5]=g_cSNR[3];
+ 204   1      			g_cReceBuf[0]=5;
+ 205   1      			g_cReceBuf[1]=status;
+ 206   1          AnswerOk();     	
+ 207   1      }
+ 208          
+ 209          /////////////////////////////////////////////////////////////////////
+ 210          //响应上位机发送的A卡锁定命令
+ 211          /////////////////////////////////////////////////////////////////////
+ 212          void ComSelect()
+ 213          {
+ 214   1      char status;
+ 215   1      	status=PcdSelect(g_cSNR, &g_cReceBuf[2]);
+ 216   1          if (status!=MI_OK)
+ 217   1          {  
+ 218   2      	
+ 219   2      		g_cReceBuf[0]=1;	
+ 220   2      		g_cReceBuf[1]=status; 
+ 221   2      	    AnswerOk(); 
+ 222   2      		return;     
+ 223   2      	}
+ 224   1                  g_cReceBuf[0]=3;
+ 225   1      			g_cReceBuf[1]=status;
+ 226   1        			AnswerOk();
+ 227   1      }
+ 228          ////////////////////////////////////////////////////////////////////////
+ 229          ///校验密码
+ 230          ///////////////////////////////////////////////////////////////////////
+ 231          void ComM500PiccAuthE2()
+ 232          {
+ 233   1      char status;
+ 234   1      unsigned char *pSNR;
+ 235   1      pSNR  = &g_cSNR;
+ 236   1      status=PcdLoadKeyE2(g_cReceBuf[1],g_cReceBuf[2]);
+ 237   1           if(status==0)
+ 238   1      	      {
+ 239   2      		    status = PcdAuthState(g_cReceBuf[1], g_cReceBuf[3], pSNR);     //验证密钥
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 5   
+
+ 240   2                  g_cReceBuf[0]=1;
+ 241   2      			g_cReceBuf[1]=status;
+ 242   2      			AnswerOk();
+ 243   2      			return; 
+ 244   2      		  }
+ 245   1      		  AnswerOk();
+ 246   1      }
+ 247          
+ 248          //////////////////////////////////////////////////////////////////////
+ 249          ///////////////////////////////////////////////////////////////////////
+ 250          ///下载密码
+ 251          ///////////////////////////////////////////////////////////////////////
+ 252          void ComM500PcdLoadKeyE2()
+ 253          {
+ 254   1      char status;
+ 255   1      status=M500PcdLoadKeyE2(g_cReceBuf[1],g_cReceBuf[2],&g_cReceBuf[3]);
+ 256   1      			g_cReceBuf[0]=1;
+ 257   1      			g_cReceBuf[1]=status;
+ 258   1      			AnswerOk();
+ 259   1      }
+ 260          
+ 261          /////////////////////////////////////////////////////////////////////
+ 262          //响应上位机发送的A卡休眠命令
+ 263          /////////////////////////////////////////////////////////////////////
+ 264          void ComHlta()
+ 265          {
+ 266   1      unsigned char status;
+ 267   1         status=PcdHalt();
+ 268   1          g_cReceBuf[0]=1;
+ 269   1      			g_cReceBuf[1]=status;
+ 270   1      			AnswerOk();   	
+ 271   1      }
+ 272          
+ 273          /////////////////////////////////////////////////////////////////////
+ 274          //响应上位机发送的A卡验证密钥命令
+ 275          /////////////////////////////////////////////////////////////////////
+ 276          void ComAuthentication()
+ 277          {	
+ 278   1          char status = MI_COM_ERR;
+ 279   1          unsigned char *pkeys,*pSNR;
+ 280   1          pkeys = &g_cReceBuf[20];
+ 281   1          pSNR  = &g_cSNR;
+ 282   1          if (MI_OK == ChangeCodeKey(&g_cReceBuf[3],pkeys))                       //转换密钥格式
+ 283   1          {    
+ 284   2          	if (MI_OK == PcdAuthKey(pkeys))                                     //传送密钥到FM1702 FIFO
+ 285   2              {
+ 286   3                   status = PcdAuthState(g_cReceBuf[1], g_cReceBuf[3], pSNR);     //验证密钥
+ 287   3              }
+ 288   2          }
+ 289   1          if (status == MI_OK)
+ 290   1          {   g_cReceBuf[0]=1;
+ 291   2      			g_cReceBuf[1]=status;
+ 292   2      			 AnswerOk();
+ 293   2      			    }
+ 294   1      
+ 295   1      }    
+ 296          
+ 297          /////////////////////////////////////////////////////////////////////
+ 298          //响应上位机读M1卡命令
+ 299          /////////////////////////////////////////////////////////////////////
+ 300          void ComM1Read()
+ 301          {
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 6   
+
+ 302   1      char status;
+ 303   1      	status=PcdRead(g_cReceBuf[1], &g_cReceBuf[2]);
+ 304   1          if (status==MI_OK)
+ 305   1          {	
+ 306   2      		if(g_cCidNad==mifare1||g_cCidNad==mifarepro)
+ 307   2      			   g_cReceBuf[0]=17;
+ 308   2      			else	  if(g_cCidNad==1)
+ 309   2      					 g_cReceBuf[0]=9;
+ 310   2      				else		  g_cReceBuf[0]=16;
+ 311   2      		g_cReceBuf[1]=status;
+ 312   2          	AnswerOk(); 
+ 313   2      		return; 
+ 314   2      	}
+ 315   1          else
+ 316   1          {   g_cReceBuf[0]=1;            }
+ 317   1      		g_cReceBuf[1]=status;
+ 318   1      		AnswerOk();
+ 319   1      }
+ 320          
+ 321          
+ 322          /////////////////////////////////////////////////////////////////////
+ 323          //响应上位机写M1卡命令
+ 324          /////////////////////////////////////////////////////////////////////
+ 325          void ComM1Write()
+ 326          {
+ 327   1          char status;
+ 328   1      	status=PcdWrite(g_cReceBuf[1], &g_cReceBuf[2]);
+ 329   1      	    g_cReceBuf[0]=1;          
+ 330   1      		g_cReceBuf[1]=status;
+ 331   1      		AnswerOk();
+ 332   1      
+ 333   1      }
+ 334          /////////////////////////////////////////////////////////////////////
+ 335          //响应上位机扣款命令
+ 336          /////////////////////////////////////////////////////////////////////
+ 337          void ComM1Decrement()
+ 338          {
+ 339   1         char status;
+ 340   1      	status=PcdValue(g_cReceBuf[1], g_cReceBuf[2], &g_cReceBuf[3]);
+ 341   1          if (status==MI_OK)
+ 342   1          { 
+ 343   2      	    g_cReceBuf[0]=1;         
+ 344   2      		g_cReceBuf[1]=status;
+ 345   2      		AnswerOk(); 
+ 346   2      		return;
+ 347   2           }
+ 348   1      	 g_cReceBuf[0]=1;         
+ 349   1      		g_cReceBuf[1]=status;
+ 350   1      		AnswerOk(); 
+ 351   1      		return;
+ 352   1      
+ 353   1      }
+ 354          
+ 355          /////////////////////////////////////////////////////////////////////
+ 356          //正确执行完上位机指令，应答（有返回数据）
+ 357          //input：answerdata = 应答数据
+ 358          //       answernum  = 数据长度
+ 359          /////////////////////////////////////////////////////////////////////
+ 360          void AnswerOk()
+ 361          {    
+ 362   1          unsigned char len, i;
+ 363   1          ES=0; 
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 7   
+
+ 364   1          TI=0;
+ 365   1      		len=g_cReceBuf[0];
+ 366   1      		for(i=0;i<len+1;i++)
+ 367   1      		{
+ 368   2      			SBUF=g_cReceBuf[i];
+ 369   2      			while(!TI);
+ 370   2      			TI=0;			
+ 371   2      		}            
+ 372   1           
+ 373   1           TI = 0;
+ 374   1      	ES=1;
+ 375   1      }
+ 376          
+ 377          /////////////////////////////////////////////////////////////////////
+ 378          //串行中断，接收上位机数据
+ 379          /////////////////////////////////////////////////////////////////////
+ 380          seri_int () interrupt 4 using 1
+ 381          {
+ 382   1      unsigned char len, i;
+ 383   1      unsigned int j=0;
+ 384   1         if (RI)
+ 385   1         { 
+ 386   2      
+ 387   2      	ES=0;
+ 388   2      	len=SBUF;
+ 389   2      		RI=0;	
+ 390   2      		for(i=0;i<len;i++)
+ 391   2      		{
+ 392   3      			while(!RI)
+ 393   3      			{
+ 394   4      				j++;
+ 395   4      				if(j>1000)
+ 396   4      				{
+ 397   5      				   ES=1;
+ 398   5      				    break;
+ 399   5      				}
+ 400   4      			}
+ 401   3      			if(j<1000)
+ 402   3      			{
+ 403   4      				g_cReceBuf[i]=SBUF;
+ 404   4      				RI=0;
+ 405   4      				j=0;
+ 406   4      			}
+ 407   3      			else
+ 408   3      			{
+ 409   4      			   ES=1;
+ 410   4      			    break;
+ 411   4      			}
+ 412   3      		}
+ 413   2      		if(i==len)
+ 414   2      		{
+ 415   3      			ES=1;
+ 416   3      			g_bReceOk  = 1;
+ 417   3      			
+ 418   3      		}
+ 419   2          }
+ 420   1      
+ 421   1      }
+ 422          
+ 423          
+ 424          /////////////////////////////////////////////////////////////////////
+ 425          //用T2做延时子程序
+C51 COMPILER V6.12  MAIN                                                                   08/27/2012 18:45:10 PAGE 8   
+
+ 426          /////////////////////////////////////////////////////////////////////
+ 427          void DelayMs(unsigned int _MS)
+ 428          {
+ 429   1          RCAP2LH = RCAP2_1ms;
+ 430   1          T2LH    = RCAP2_1ms;
+ 431   1      
+ 432   1          ET2     = 0; 	                                   // Disable timer2 interrupt
+ 433   1          T2CON   = 0x04;                                        // 16-bit auto-reload, clear TF2, start timer
+ 434   1          TR2     = 1;
+ 435   1          while (_MS--)
+ 436   1          {   while (!TF2);TF2 = 0;  }
+ 437   1          TR2 = 0;
+ 438   1      }
+ 439          void Delay_50us(unsigned char _50us)
+ 440          {
+ 441   1          RCAP2LH = RCAP2_50us;
+ 442   1          T2LH    = RCAP2_50us;
+ 443   1      
+ 444   1          ET2     = 0; 	                                   // Disable timer2 interrupt
+ 445   1          T2CON   = 0x04;	                                   // 16-bit auto-reload, clear TF2, start timer
+ 446   1          while (_50us--)
+ 447   1          {   while (!TF2);TF2 = 0;  }
+ 448   1          TR2 = 0;
+ 449   1      }
+ 450          
+ 451          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    982    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     12      17
+   IDATA SIZE       =     64    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  2 WARNING(S),  0 ERROR(S)
